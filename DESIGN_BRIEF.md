@@ -83,11 +83,11 @@ pass after running Omarchy's text-size slider and `omarchy-font-set`.
 
 The owner resolved the original questions on 2026-10-21. Current requirements
 and priority are recorded in Section 10 below. Remaining implementation
-decisions are the location source and sunrise/sunset handling. A versioned
+decisions are sunrise/sunset handling. A versioned
 read-only priority-app inventory is recorded in the application support matrix;
 LibreOffice Fresh is absent and the Hey CLI version was not queried because its
 launcher can invoke mise and alter its managed tool state. The canonical
-catalog path and initial Omarchy sources are now selected and copied (Section 12).
+live Omarchy catalog sources are recorded in Section 12.
 
 ## 8. Sources
 
@@ -134,27 +134,47 @@ this brief wherever they conflict.
 3. **Independent fonts:** provide separate family and size choices for
    non-terminal system applications and for terminals. The terminal face may
    be monospace; it must not force a monospace face on the rest of the system.
+   Before implementation, inventory every active font family, size, fallback,
+   and scaling control that can affect each supported surface. This includes
+   GTK 3 and GTK 4 settings plus GNOME/dconf font keys; fontconfig generic
+   aliases, fallback chains, and DPI rules; Qt 5/6 settings when their platform
+   integration is active; Quickshell's font style and base size; each
+   terminal's own config; browser default web fonts; and application-owned UI
+   settings such as ONLYOFFICE. Track font-related GTK CSS/theme rules and
+   environment overrides, along with monitor/GDK scaling and GTK text scaling
+   that change visible size. Record the writers that can reapply competing
+   values, including Omarchy font/size/theme commands and enabled plugins.
+   Treat document and web-page typography as content preferences, separate
+   from application chrome, unless the owner explicitly selects a policy for
+   that content. Do not claim a target is covered until its active inputs,
+   writers, precedence, and relaunch behavior are represented in the support
+   matrix.
 4. **Theme and background:** provide independently selected Light and Dark
    themes, plus Light all day, Dark all day, or Automatic mode. Automatic
    switches to Light at apparent sunrise and Dark at apparent sunset, using
-   manually entered coordinates and an IANA time zone. Sunrise and sunset
-   offsets are applied in local wall-clock minutes and may be adjusted by up
-   to three hours either way. The time zone database handles daylight-saving
+   coordinates from Omarchy weather settings and the system IANA time zone.
+   Location and time zone come from existing system settings, with no
+   user-adjustable solar offsets. The time zone database handles daylight-saving
    changes. At high latitudes, days without sunrise or sunset leave the current
    theme unchanged until the next calculable event. Calculations are offline
    and approximate; they do not request location or network access. The
    background choice is independent of the theme and must persist through
    theme changes.
 5. **Icons:** provide an independent global icon-theme choice.
-6. **Display setup:** monitor arrangement, resolution, orientation, and
+6. **Boot unlock design:** provide a separate dropdown for Omarchy's boot
+   decryption screen. Populate it only from themes that include both
+   `unlock.png` and `preview-unlock.png`. The selected unlock design is
+   independent of the Light/Dark desktop themes. Applying it requires
+   a reviewed, reversible adapter for Omarchy's Plymouth integration.
+7. **Display setup:** monitor arrangement, resolution, orientation, and
    primary display stay outside Look and Feel. Per-display scale also remains
    in display setup.
-7. **Application priority:** first cover email clients (including Hey, the
+8. **Application priority:** first cover email clients (including Hey, the
    email client identified by the owner as native to Omarchy), LibreOffice
    Fresh, OnlyOffice Desktop Editors, the file manager, terminals, and the
    browser. The owner estimates this covers about 80% of everyday use. IDEs
    follow, then content-creation tools.
-8. **Font provenance:** offer fonts packaged by the installed Linux
+9. **Font provenance:** offer fonts packaged by the installed Linux
    distribution and explicitly verified open-source alternatives. A font
    discovered in a local directory or online catalog is not automatically
    eligible. Record each family's styles, exact source/package, license, and
@@ -202,35 +222,22 @@ These findings are from local configuration and executable/package
 inspection on 2026-10-21; they are not claims that the prototype can already
 enforce the selected appearance.
 
-## 12. Initial catalog snapshot — 2026-10-21
+## 12. Live appearance catalogs — 2026-10-22
 
-The canonical persistent catalog root is
-`~/.local/share/omarchy-look-and-feel/catalogs/`. The plugin inventory reads
-themes and backgrounds from this root. It is seeded from `/usr/share/omarchy/
-themes`, `~/.config/omarchy/themes`, and `~/.config/omarchy/backgrounds`.
-Theme directory trees are retained under `themes/omarchy-packaged/` and
-`themes/omarchy-user/`. Background images are separately gathered under
-`backgrounds/omarchy-packaged/`, `backgrounds/omarchy-user/`, and
-`backgrounds/user-library/`; image paths preserve their theme or source
-subdirectory. Theme videos and other non-image media are not included in the
-background library.
+Dropdown inventory reads live sources directly: themes and unlock designs from
+`/usr/share/omarchy/themes/` and `~/.config/omarchy/themes/`; theme wallpapers
+from each theme's `backgrounds/` folder; additional wallpapers from
+`/usr/share/omarchy/backgrounds/`, `~/.config/omarchy/backgrounds/`, and
+`~/Documents/Fonts_Icons_Wallpaper/Backgrounds/`; fonts from fontconfig; and
+icons from active XDG data directories. The current Omarchy wallpaper is
+included. New or updated themes and unlock designs appear without refreshing a
+plugin-private snapshot. The old copied catalog remains on disk but is not used
+for dropdown discovery.
 
-This is a copied local snapshot, not a live mirror. The original Omarchy
-directories were not changed. A future catalog refresh must be explicit and
-must not replace user-added catalog items without review. `catalog-manifest.json`
-records file paths, sizes, and SHA-256 hashes. Initial source sizes were about
-211 MiB for packaged themes, 1.1 GiB for custom themes, and 29 MiB for the
-standalone background library. The resulting catalog occupies about 1.6 GiB,
-including the separate theme-wallpaper copies. The read-only prototype
-inventories these canonical copies; it does not yet apply themes or
-backgrounds. Inventory records now include deterministic IDs and source/review
-metadata. The selection gate requires verified provenance, an explicit
-license and evidence reference, and (for themes) a compatibility review. An
-audit of the current inventory found 616 entries and no entries with complete
-evidence; all remain unselectable. This is intentional because fontconfig
-presence and a copied image/theme do not establish a usable license. Audit
-counts are available in `controller.py inventory`; the metadata shape and
-selection gate are defined in `catalog-entry.schema.json` and `controller.py`.
+Inventory records retain deterministic IDs and source/review metadata. Font
+provenance metadata applies only to exact family-name matches; discovery does
+not imply Apply support or runtime compatibility. `catalog-entry.schema.json`
+and `controller.py` define the metadata and selection gate.
 
 Two external discovery sources were supplied by the owner on 2026-10-21:
 Omarchy Hub's theme index (`https://omarchy.deepakness.com/themes`) and
@@ -242,17 +249,24 @@ them. It is therefore recorded as a discovery reference only; its images are
 not copied into the canonical catalog. Any future import needs per-image
 rights/provenance review or an explicit user-directed personal import path.
 
-## 13. Priority application support matrix — 2026-10-21
+## 13. Priority application support matrix — 2026-10-22
 
 The printable [application support matrix](APPLICATION_SUPPORT_MATRIX.html)
 records package versions, observed configuration files, current font/theme
 values, Omarchy side effects, and runtime proof still required for PCManFM,
 five terminals, Brave, Hey, and ONLYOFFICE. LibreOffice Fresh is not installed.
-Key conflicts found include distinct GTK 3/GTK 4 fonts and dark-mode settings,
-separate Qt font/palette files whose active session integration is not proven,
-WezTerm's independent palette, the managed Brave color-scheme policy, the
-enabled Shell Font plugin, and a Fish GTK theme environment override. Omarchy
-theme changes normally replace the background unless told to skip that step.
+Font controls now recorded include separate GTK 3/GTK 4 base fonts, separate
+GNOME interface/document/monospace font keys, fontconfig generic-family aliases
+and fallback chains, Qt 5/6 preferences, five terminal configs, Quickshell's
+base size and Shell Font plugin, Brave's default web-content fonts, GTK theme
+CSS, and monitor/GDK/fontconfig scaling. Known competing writers include
+Omarchy font/size/theme commands, the user's `fontsize` fish function, and the
+Shell Font plugin. The dconf probe could not access its runtime path from this
+inspection environment; verify those reported values in the live session.
+OnlyOffice's UI font authority and live Qt platform-theme integration remain
+unconfirmed. The support matrix records these sources and the remaining
+per-application verification work. Omarchy theme changes normally replace the
+background unless told to skip that step.
 
 This was a read-only audit. No settings were modified and no target is yet
 classified as supported. Application chrome must be distinguished from website
@@ -262,11 +276,12 @@ support.
 
 ## 14. Settings contract — 2026-10-21
 
-The first version of the canonical settings contract is in
+Version 2 of the canonical settings contract is in
 `settings.schema.json`; `settings.example.json` shows its unselected initial
 state. It keeps system and terminal font IDs/sizes separate; Light and Dark
 theme IDs separate from the active mode; the background and icon theme
-independent; and schedule location/offsets explicit. Font sizes are stored in
+independent; and automatic scheduling derives location and time zone from
+system settings. Font sizes are stored in
 points as the requested logical size; each application adapter is responsible
 for translating that value to the application's own units and measuring its
 rendered result. Monitor arrangement and scale are intentionally absent.
@@ -274,8 +289,8 @@ rendered result. Monitor arrangement and scale are intentionally absent.
 The example is not installed as live user settings. Before implementing any
 writer, specify atomic save behavior, per-target backups, rollback on partial
 failure, and recovery after interruption. Automatic mode must not apply until
-both themes and a manually configured location/time zone are valid. No
-geolocation lookup or network dependency is assumed.
+both themes are selected and Omarchy weather coordinates plus the system time
+zone can be resolved. No geolocation lookup or network dependency is assumed.
 
 The apply/rollback contract is now specified in the printable
 `APPLY_TRANSACTION.html`. It requires a durable journal and private exact-target
@@ -287,7 +302,7 @@ writing adapter is enabled yet.
 ## 15. Transaction core — 2026-10-21
 
 `transaction.py` now implements the file-target transaction lifecycle,
-stdlib validation for settings version 1, atomic replacement, private
+stdlib validation for settings version 2, atomic replacement, private
 snapshots and journal, target readback, reverse-order restoration, interrupted
 transaction recovery, last-commit rollback, and bounded snapshot retention.
 The reviewed file target allowlist is intentionally empty. Calls to Apply are
@@ -299,3 +314,118 @@ transactions under its lock before beginning a new Apply. The user-facing
 rollback control still needs integration before the Apply UI is exposed.
 Explicit CLI commands provide transaction status, recovery, and rollback;
 inventory discovery remains read-only and invokes none of them.
+
+## 16. Owner's initial appearance preferences — 2026-10-22
+
+The owner supplied these requested starting values:
+
+- System font: Aileron, 12 pt. (The owner replaced Avenir Next with Aileron on
+  2026-10-22.)
+- Terminal font: Office Code Pro, 12 pt.
+- Theme mode: Automatic; Light theme Alucard; Dark theme Dracula Pro Van
+  Helsing.
+- Current catalog IDs: `theme:dracula-pro-alucard-3bbe21886bb2` and
+  `theme:dracula-pro-van-helsing-b06cbc9d080a`.
+- Boot unlock design: Dracula Pro Van Helsing. This is one independent boot
+  choice and does not switch with the desktop's Light/Dark schedule.
+- Background: `/home/si/Documents/Fonts_Icons_Wallpaper/Backgrounds/1333929.jpeg`.
+- Icon theme: `Tela-circle-dracula-dark-van-helsing` (the active installed
+  icon-theme ID), catalog ID `icon:tela-circle-dracula-dark-van-helsing-8087a116ad09`.
+- Schedule: Automatic mode uses system location and time zone. Location comes
+  from `/home/si/.local/state/omarchy/settings/weather.json`; the
+  inspected system file names Tucson at latitude `32.22174`, longitude
+  `-110.92648`. Time zone comes from `/etc/localtime`, which currently
+  resolves to `America/Phoenix`. These values are system context, not
+  separately editable Look & Feel preferences. No sunrise/sunset offsets are
+  configured.
+
+These are requested preferences, not a claim that catalog entries are
+selectable or have been applied. Fontconfig resolves both requested font
+families. Their provenance review and the remaining catalog-selection gate
+are recorded in Section 17. The background file was present when checked.
+The current prototype remains read-only.
+
+## 17. Initial selection inventory check — 2026-10-22
+
+The installed icon setting resolves to
+`Tela-circle-dracula-dark-van-helsing`; its installed directory is
+`/usr/share/icons/Tela-circle-dracula-dark-van-helsing/`. Schedule coordinates
+are read from the machine's Omarchy weather settings rather than the Census
+city-center point previously recorded in version 1 of this brief.
+
+The live inventory reports 31 themes, 26 unlock designs, 364 font families,
+74 icon themes, and 145 deduplicated backgrounds. It includes Alucard and Van
+Helsing from the Omarchy user theme directory; both contain `unlock.png` and
+`preview-unlock.png` and appear in the unlock selector. The two reviewed font
+families are selectable in the development catalog; theme compatibility
+review and Apply adapters remain separate gates.
+The local Dracula Pro source bundle also contains its EULA; review its
+personal-use and modification terms against the derived theme files before
+marking those theme records selectable.
+
+The local `/home/si/Downloads/office-code-pro.zip` has SHA-256
+`0976a8dfb646770166011c5b2c47de659e124b679ef725704d850e7d1905bbd8`. It
+contains an OFL 1.1 license; the installed font metadata also names the SIL
+Open Font License, and all eight installed Office Code Pro OTF files match
+the corresponding archive members. This verifies the local source archive
+and its license, though its original download URL is not recorded.
+
+The owner selected Aileron as the system font. The designer's official
+[Aileron page](https://dotcolon.net/fonts/aileron/) identifies version 0.102
+as “No Rights Reserved” and permits use, modification, and redistribution.
+The local `/home/si/Downloads/aileron_0102.zip` archive contains all 16
+installed OTF files byte-for-byte; its SHA-256 is
+`a93a1327f44912a7b1410ad0056fec3e904074413b0bd9da550f6175587cf958`. Font
+metadata also says “No Rights Reserved.” This satisfies the source and
+license review for Aileron. `font-reviews.json` now records this review and
+Office Code Pro's local archive/OFL review. The inventory applies reviewed
+metadata only to exact family-name matches reported by fontconfig. Office Code
+Pro's evidence currently references `/home/si/Downloads/office-code-pro.zip`,
+so that record is machine-specific; its original download URL is unknown.
+These records make the two font catalog entries eligible, but no appearance
+settings have been applied.
+
+Avenir Next is no longer selected. The installed TTC identifies Linotype GmbH
+and says all rights reserved; it contains no open-source license record. The
+downloaded Avenir Next LT Pro archives also have no included license file.
+Monotype offers Avenir Next with commercial licensing choices
+([Monotype product page](https://www.monotype.com/fonts/avenir-next-world)).
+
+## 18. Dracula Pro license and snapshot audit — 2026-10-22
+
+The local source bundle's `/home/si/Documents/Dracula_Pro_Theme_Pack/license.md`
+identifies itself as the Dracula PRO EULA. It grants personal, non-transferable
+use on up to three computers, prohibits editing or adapting any part of the
+Software, and prohibits copying or distributing it for commercial purposes.
+It also says components designated open source follow their own licenses. The
+official [Dracula Pro page](https://draculatheme.com/pro) describes a license
+for three computers and up to three active devices. These sources establish
+the published use limits, but do not specifically resolve whether derived
+unlock artwork, inclusion in a personal plugin, or onward distribution is
+permitted. This is a project eligibility review, not a legal interpretation.
+
+The previous plugin snapshot's Alucard and Van Helsing directories were
+compared with their live Omarchy theme directories (six and twenty-five common
+files respectively); that snapshot omitted the unlock images. Current dropdown
+discovery reads the live theme roots directly. The SHA-256 values are Alucard `unlock.png`
+`45677c44d64240ea2df4c8f3be8868470aaa9db75e232b7d8c307179f9f8f279`,
+`preview-unlock.png`
+`214ec322d3363dfa9ef1c47d4b2ba156505c195cb943f17adf20279f325faa28`; Van
+Helsing `unlock.png`
+`6d837610f23006abf8dbd7d78641159df1ce93f7bb5393de235e1827e4f31399`,
+`preview-unlock.png`
+`d1cb15239095be0c8511c7b71dbc413040e257aa56225f27169425ca74da63e1`.
+
+The owner has directed that licensing not block this development work. Treat
+the local EULA review above as context only; do not infer permission for
+redistribution. The selected Alucard and Van Helsing theme entries are marked
+development-only and bypass license gating, but still need plugin
+compatibility review and an Apply adapter before they can be applied.
+
+## 19. Live Omarchy unlock entries — 2026-10-22
+
+The controller discovers unlock designs directly from the live Omarchy theme
+directories and requires both `unlock.png` and `preview-unlock.png`. The panel
+shows a dropdown and preview, preselecting Van Helsing from the owner's initial
+preferences. The selected value is transient UI state and is not saved or
+applied. Theme application remains pending an adapter.

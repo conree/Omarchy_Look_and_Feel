@@ -9,9 +9,9 @@
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^(font|theme|background|icon):[a-z0-9-]+-[a-f0-9]{12}$"
+      "pattern": "^(font|theme|unlock|background|icon):[a-z0-9-]+-[a-f0-9]{12}$"
     },
-    "kind": { "enum": ["font", "theme", "background", "icon"] },
+    "kind": { "enum": ["font", "theme", "unlock", "background", "icon"] },
     "name": { "type": "string", "minLength": 1 },
     "source": {
       "oneOf": [
@@ -19,16 +19,21 @@
         { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
       ]
     },
+    "preview": { "type": ["string", "null"], "minLength": 1 },
     "license": { "type": ["string", "null"] },
     "licenseEvidence": { "type": ["string", "null"], "format": "uri" },
     "provenanceVerified": { "type": "boolean" },
     "review": { "type": "string", "minLength": 1 },
+    "developmentOnly": { "type": "boolean" },
     "compatibility": { "enum": ["pending", "verified", "not-required"] },
     "selectable": { "type": "boolean" }
   },
   "allOf": [
     {
-      "if": { "properties": { "selectable": { "const": true } }, "required": ["selectable"] },
+      "if": {
+        "properties": { "selectable": { "const": true }, "developmentOnly": { "not": { "const": true } } },
+        "required": ["selectable"]
+      },
       "then": {
         "properties": {
           "license": { "type": "string", "minLength": 1 },
@@ -39,12 +44,26 @@
       }
     },
     {
+      "if": {
+        "properties": { "selectable": { "const": true }, "developmentOnly": { "const": true } },
+        "required": ["selectable", "developmentOnly"]
+      },
+      "then": { "properties": { "review": { "const": "development-approved" } } }
+    },
+    {
       "if": { "properties": { "kind": { "const": "theme" } }, "required": ["kind"] },
       "then": {
         "if": { "properties": { "selectable": { "const": true } }, "required": ["selectable"] },
         "then": { "properties": { "compatibility": { "const": "verified" } } }
       },
       "else": { "properties": { "compatibility": { "const": "not-required" } } }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "unlock" } }, "required": ["kind"] },
+      "then": {
+        "properties": { "preview": { "type": "string", "minLength": 1 } },
+        "required": ["preview"]
+      }
     }
   ]
 }

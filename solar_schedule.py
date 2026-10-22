@@ -111,15 +111,10 @@ def next_transition(
     latitude: float,
     longitude: float,
     time_zone: str,
-    sunrise_offset_minutes: int = 0,
-    sunset_offset_minutes: int = 0,
 ) -> ThemeTransition:
     """Return the next scheduled theme change, skipping polar no-event days."""
     if now.tzinfo is None or now.utcoffset() is None:
         raise SolarScheduleError("now must be timezone-aware")
-    for offset in (sunrise_offset_minutes, sunset_offset_minutes):
-        if isinstance(offset, bool) or not isinstance(offset, int) or not -180 <= offset <= 180:
-            raise SolarScheduleError("event offsets must be integers between -180 and 180 minutes")
     try:
         zone = ZoneInfo(time_zone)
     except (ZoneInfoNotFoundError, ValueError) as exc:
@@ -133,8 +128,8 @@ def next_transition(
         except NoSolarEventError:
             continue
         transitions = (
-            ThemeTransition(events.sunrise + timedelta(minutes=sunrise_offset_minutes), "light", "sunrise"),
-            ThemeTransition(events.sunset + timedelta(minutes=sunset_offset_minutes), "dark", "sunset"),
+            ThemeTransition(events.sunrise, "light", "sunrise"),
+            ThemeTransition(events.sunset, "dark", "sunset"),
         )
         upcoming = [item for item in transitions if item.at.astimezone(UTC) > now.astimezone(UTC)]
         if upcoming:

@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "typography": {
     "system": { "fontId": null, "sizePt": 12 },
     "terminal": { "fontId": null, "sizePt": 12 }
@@ -9,11 +9,7 @@
     "light": null,
     "dark": null
   },
+  "unlock": null,
   "background": null,
-  "icons": null,
-  "schedule": {
-    "location": null,
-    "sunriseOffsetMinutes": 0,
-    "sunsetOffsetMinutes": 0
-  }
+  "icons": null
 }

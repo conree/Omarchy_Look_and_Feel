@@ -1,13 +1,13 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://omarchy-look-and-feel.local/schema/settings-v1.json",
+  "$id": "https://omarchy-look-and-feel.local/schema/settings-v2.json",
   "title": "Omarchy Look & Feel settings",
   "description": "The plugin-owned appearance choices. Values reference catalog entries; adapters translate them to application settings.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "typography", "theme", "background", "icons", "schedule"],
+  "required": ["schemaVersion", "typography", "theme", "unlock", "background", "icons"],
   "properties": {
-    "schemaVersion": { "const": 1 },
+    "schemaVersion": { "const": 2 },
     "typography": {
       "type": "object",
       "additionalProperties": false,
@@ -27,6 +27,11 @@
         "dark": { "type": ["string", "null"], "minLength": 1 }
       }
     },
+    "unlock": {
+      "description": "An unlock-design catalog ID for Omarchy's boot decryption screen, independent of the selected desktop theme.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
     "background": {
       "description": "A catalog ID or user-selected image URI, independent of theme.",
       "type": ["string", "null"],
@@ -36,31 +41,6 @@
       "description": "Installed icon-theme catalog ID.",
       "type": ["string", "null"],
       "minLength": 1
-    },
-    "schedule": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["location", "sunriseOffsetMinutes", "sunsetOffsetMinutes"],
-      "properties": {
-        "location": {
-          "description": "Manually configured coordinates and IANA time zone. No location lookup or network request is implied.",
-          "oneOf": [
-            { "type": "null" },
-            {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["latitude", "longitude", "timeZone"],
-              "properties": {
-                "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
-                "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
-                "timeZone": { "type": "string", "minLength": 1 }
-              }
-            }
-          ]
-        },
-        "sunriseOffsetMinutes": { "type": "integer", "minimum": -180, "maximum": 180 },
-        "sunsetOffsetMinutes": { "type": "integer", "minimum": -180, "maximum": 180 }
-      }
     }
   },
   "$defs": {

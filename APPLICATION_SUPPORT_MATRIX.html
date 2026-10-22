@@ -42,8 +42,8 @@
     <h1>Application support matrix</h1>
     <div class="subtitle">Read-only audit of appearance control points for the agreed first-priority applications</div>
     <div class="meta">
-      <strong>Status</strong><span>Inventory complete; no adapters implemented and no application appearance changed</span>
-      <strong>Evidence date</strong><span>21 October 2026</span>
+      <strong>Status</strong><span>Font authority inventory expanded; no adapters implemented and no application appearance changed</span>
+      <strong>Evidence date</strong><span>22 October 2026</span>
       <strong>Machine</strong><span>Omarchy 4.0.6-1 · Arch Linux package set</span>
       <strong>Authority</strong><span>Owner-approved Look and Feel settings must win for every supported target</span>
     </div>
@@ -57,8 +57,8 @@
     <tbody>
       <tr>
         <td><strong>PCManFM</strong><br>1.4.0-2</td>
-        <td>Links to GTK 3 (`libgtk-3.so.0`). Its own <code>~/.config/pcmanfm/default/pcmanfm.conf</code> controls file-view behavior, not font or theme. GTK 3 settings currently specify Visby CF 14, Dracula-Van-Helsing, and Tela-circle Dracula icons.</td>
-        <td><span class="status inherited">Inherited GTK 3 controls found.</span> Likely a straightforward GTK adapter target. Confirm the running file-manager UI follows family, point size, colors, icons, and display scale after changes and relaunch.</td>
+        <td>Links to GTK 3 (<code>libgtk-3.so.0</code>). Its own <code>~/.config/pcmanfm/default/pcmanfm.conf</code> controls file-view behavior, not font or theme. The GTK 3 <code>settings.ini</code> still specifies Visby CF 14, Dracula-Van-Helsing, and Tela-circle Dracula icons.</td>
+        <td><span class="status inherited">Inherited GTK 3 controls found.</span> The separate Shell Font plugin only styles Omarchy’s Quickshell UI, so it does not change PCManFM. Look_and_Feel needs a GTK 3 settings adapter for the system font and must verify the running file manager after relaunch.</td>
       </tr>
       <tr>
         <td><strong>Alacritty</strong><br>0.17.0-1</td>
@@ -114,8 +114,18 @@
     <tbody>
       <tr>
         <td><strong>GTK 3 and GTK 4</strong></td>
-        <td><code>~/.config/gtk-3.0/settings.ini</code> sets Visby CF 14, Dracula-Van-Helsing, Tela-circle Dracula icons and prefers light at the GTK setting. <code>~/.config/gtk-4.0/settings.ini</code> sets Visby CF Medium 14, the same theme/icons, and Adwaita <code>prefer-dark</code>. Fish also exports <code>GTK_THEME=Dracula-Van-Helsing</code> for programs launched from that shell.</td>
-        <td>One “system font” value must write both GTK generations consistently and coordinate the shell environment override. Per-app CSS or app-specific settings can still diverge and need inventory/verification.</td>
+        <td><code>~/.config/gtk-3.0/settings.ini</code> sets Visby CF 14; <code>~/.config/gtk-4.0/settings.ini</code> sets Visby CF Medium 14. The GSettings probe returned <code>font-name=Visby CF Medium 14</code>, <code>document-font-name=Avenir Next 12</code>, <code>monospace-font-name=Comic Code Ligatures 11</code>, and <code>text-scaling-factor=1.0</code>, but warned that its dconf runtime path is unavailable in this inspection environment. GTK theme/icon preferences are separate. Fish exports <code>GTK_THEME=Dracula-Van-Helsing</code>. PCManFM is GTK 3.</td>
+        <td>GTK settings files and GSettings/dconf are distinct inputs and can disagree; the selected GTK generation and runtime settings backend must be verified per app. A system-font adapter must account for both GTK generations and decide explicitly whether the separate document and monospace defaults follow the system selection. The Shell Font plugin does not update either GTK source. GTK CSS/theme rules and environment overrides also need checking.</td>
+      </tr>
+      <tr>
+        <td><strong>GTK theme CSS</strong></td>
+        <td>The selected Dracula-Van-Helsing GTK 3 and GTK 4 theme stylesheets contain explicit widget font sizes and a Monospace family rule. <code>~/.config/gtk-3.0/gtk.css</code> is an additional user override layer.</td>
+        <td>Theme CSS can override family, weight, or size for selected widgets even when GTK's base font setting is correct. Re-scan the selected theme and user CSS after theme changes, and distinguish those scoped rules from a global font selection.</td>
+      </tr>
+      <tr>
+        <td><strong>Fontconfig</strong></td>
+        <td><code>~/.config/fontconfig/fonts.conf</code> prepends Comic Code Ligatures for the generic <code>monospace</code> family. Rules in <code>conf.d</code> alias Visby to Visby CF, define preferred sans/serif/monospace fallback chains, and set font scale 1.5 and DPI 75.</td>
+        <td>Fontconfig affects family matching and rendered metrics for applications that request generic families; it does not set GTK's widget font name. Omarchy's <code>omarchy-font-set</code> rewrites the monospace alias, and Font Manager owns some display-property rules. Preserve and reconcile these rules without replacing unrelated configuration.</td>
       </tr>
       <tr>
         <td><strong>Qt 5/6</strong></td>
@@ -124,17 +134,22 @@
       </tr>
       <tr>
         <td><strong>Omarchy theme/font/size commands</strong></td>
-        <td><code>omarchy-theme-set</code> retints a list of apps, runs theme hooks, and normally sets a theme-associated background; <code>OMARCHY_THEME_SKIP_BACKGROUND=1</code> skips that background replacement. <code>omarchy-font-set</code> rewrites Alacritty, Kitty, Ghostty and Foot, updates fontconfig, restarts shell, and runs the font hook. <code>omarchy-display-text-size</code> rewrites terminal sizes and the GTK text scale.</td>
-        <td>Adapters must reassert owner preferences after these commands. Theme application must preserve the independently chosen wallpaper. The existing font and size commands do not cover WezTerm.</td>
+        <td><code>omarchy-font-set</code> rewrites Alacritty, Kitty, Ghostty, Foot, the fontconfig monospace alias, and restarts Quickshell before running font hooks. <code>omarchy-display-text-size</code> changes Quickshell base size, GNOME/GTK <code>text-scaling-factor</code>, and sizes in four terminal configs. The user's <code>fontsize</code> fish function separately rewrites sizes in five terminal configs and restarts terminals. Theme changes and hooks may also rewrite app configuration.</td>
+        <td>These are competing writers, not passive settings. Look_and_Feel must reassert its owned values after each relevant command/hook and preserve unrelated keys. Omarchy's commands do not cover every app-specific adapter; the fish function additionally covers WezTerm.</td>
       </tr>
       <tr>
         <td><strong>Omarchy Shell Font plugin</strong></td>
-        <td><code>skuthus.shell-font</code> is listed in <code>~/.config/omarchy/shell.json</code>, and its config currently enables Visby CF Medium. Its loaded service reads that config and applies it at shell startup.</td>
-        <td>This is a direct competing authority for shell UI text. The Look and Feel adapter must coordinate with it or it will reassert its own family after shell restart.</td>
+        <td><code>skuthus.shell-font</code> is listed in <code>~/.config/omarchy/shell.json</code>. Its active selection is Avenir Next Regular. The plugin loads a generated face and sets Quickshell’s <code>Style.fontFamily</code>; its code does not write GTK settings. The GTK 3 font remains Visby CF 14.</td>
+        <td>This plugin only controls Omarchy’s Quickshell bar and shell UI. It neither promises nor applies a desktop-wide system font. Look_and_Feel must implement its own GTK 3/4 adapters; its current prototype is read-only and does not yet apply any settings.</td>
+      </tr>
+      <tr>
+        <td><strong>Display scaling and rendering</strong></td>
+        <td>The GSettings probe returned GNOME text scaling 1.0 and separate antialiasing, hinting, and subpixel-order values; its dconf runtime path was unavailable here, so verify them in-session. Hyprland monitor scale is 1.5 and <code>GDK_SCALE</code> is 1.33. Fontconfig's display-properties rule sets font scale 1.5 and DPI 75.</td>
+        <td>These controls change apparent size or rasterization without changing the selected family/point size. Record and verify them when comparing visible size; do not silently change monitor layout, scale, or rendering preferences as part of a font-family selection.</td>
       </tr>
       <tr>
         <td><strong>Background and icons</strong></td>
-        <td>Omarchy theme setter can change the wallpaper as a side effect. GTK 3/4 icon theme currently comes from settings files. The independent catalog snapshot is at <code>~/.local/share/omarchy-look-and-feel/catalogs/</code>.</td>
+        <td>Omarchy theme setter can change the wallpaper as a side effect. GTK 3/4 icon theme currently comes from settings files. Dropdown inventory reads live theme wallpaper directories, <code>~/.config/omarchy/backgrounds/</code>, the current wallpaper, the owner's personal wallpaper library, and XDG icon directories.</td>
         <td>Use the canonical background choice separately from theme application and suppress Omarchy’s automatic theme wallpaper replacement. GTK icon choice has a direct control point; Qt and app-owned icon coverage still needs proof.</td>
       </tr>
     </tbody>
@@ -143,7 +158,7 @@
   <h2>Implementation gates</h2>
   <ol>
     <li>Define the saved settings schema so system font, terminal font, Light theme, Dark theme, mode, background, and icon theme remain independent.</li>
-    <li>Implement reversible, narrowly scoped adapters for GTK 3/4 and each terminal. Reassert after Omarchy font, size, and theme actions; preserve theme/background separation.</li>
+    <li>Implement reversible, narrowly scoped adapters for GTK 3/4, fontconfig, each terminal, and the active shell/browser/app-specific font controls. Reassert after Omarchy font, size, and theme actions; preserve theme/background separation.</li>
     <li>Resolve the active Qt integration and ONLYOFFICE’s app-owned UI settings before claiming those targets.</li>
     <li>Treat Brave/HEY web content and office document content separately from app chrome. Decide and prove the required enforcement boundary before listing them as supported.</li>
     <li>Do not mark any target supported until family, visible size, theme/color, and relevant icon/background behavior survive relaunch and the known competing-setting actions.</li>

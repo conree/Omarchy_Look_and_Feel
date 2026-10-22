@@ -33,7 +33,7 @@
   <header>
     <h1>Apply and rollback contract</h1>
     <p>Transaction rules for changing Omarchy Look &amp; Feel settings across application adapters.</p>
-    <div class="meta"><strong>Status</strong><span>Design contract; no configuration-writing adapter is enabled</span><strong>Date</strong><span>2026-10-21</span><strong>Settings contract</strong><span><code>settings.schema.json</code>, version 1</span></div>
+    <div class="meta"><strong>Status</strong><span>Design contract; no configuration-writing adapter is enabled</span><strong>Date</strong><span>2026-10-22</span><strong>Settings contract</strong><span><code>settings.schema.json</code>, version 2</span></div>
   </header>
 
   <h2>Purpose and limits</h2>
@@ -42,7 +42,7 @@
 
   <h2>Transaction sequence</h2>
   <ol>
-    <li><strong>Validate.</strong> Validate the draft against <code>settings.schema.json</code>, confirm every selected ID exists in the current catalog, and check adapter preconditions. Automatic theme mode requires both theme IDs and a configured latitude, longitude, and IANA time zone.</li>
+    <li><strong>Validate.</strong> Validate the draft against <code>settings.schema.json</code>, confirm every selected ID exists in the current catalog, and check adapter preconditions. Automatic theme mode requires both theme IDs, coordinates from Omarchy weather settings, and a resolvable system IANA time zone. A selected boot unlock design must exist in the reviewed unlock catalog and requires a reversible Plymouth adapter.</li>
     <li><strong>Acquire the transaction lock.</strong> Allow one apply or rollback at a time. Before starting a new Apply, restore every interrupted transaction under this lock. If recovery fails, stop and preserve its journal and snapshots.</li>
     <li><strong>Snapshot exact targets.</strong> Record every file or supported API value an adapter may change before making any change. For regular user-owned files, preserve bytes, POSIX mode bits, and whether the file existed. Reject symlinks and paths outside the registered target list. Store snapshots in a private transaction directory with mode <code>0700</code>; files use mode <code>0600</code>.</li>
     <li><strong>Write a durable journal.</strong> Record transaction ID, previous canonical settings, proposed settings, target list, snapshot hashes, and phase. Flush the journal before the first target mutation.</li>

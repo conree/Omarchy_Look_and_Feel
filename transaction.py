@@ -23,10 +23,9 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Mapping
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 MAX_SETTINGS_BYTES = 256 * 1024
 MAX_TARGET_BYTES = 16 * 1024 * 1024
 MAX_JOURNAL_BYTES = 2 * 1024 * 1024
@@ -162,12 +161,12 @@ def _target_paths(target_contents: Mapping[str, bytes]) -> dict[str, Path]:
 
 
 def validate_settings(settings: object) -> dict[str, object]:
-    """Validate the version 1 settings contract using only the Python stdlib."""
+    """Validate the version 2 settings contract using only the Python stdlib."""
     if not isinstance(settings, dict):
         raise TransactionError("settings must be a JSON object")
-    expected = {"schemaVersion", "typography", "theme", "background", "icons", "schedule"}
+    expected = {"schemaVersion", "typography", "theme", "unlock", "background", "icons"}
     if set(settings) != expected or type(settings.get("schemaVersion")) is not int or settings.get("schemaVersion") != SCHEMA_VERSION:
-        raise TransactionError("settings fields or schemaVersion do not match schema version 1")
+        raise TransactionError("settings fields or schemaVersion do not match schema version 2")
 
     typography = settings["typography"]
     if not isinstance(typography, dict) or set(typography) != {"system", "terminal"}:
@@ -191,37 +190,13 @@ def validate_settings(settings: object) -> dict[str, object]:
         if theme[key] is not None and (not isinstance(theme[key], str) or not theme[key]):
             raise TransactionError(f"theme.{key} must be a non-empty string or null")
 
-    for key in ("background", "icons"):
+    for key in ("unlock", "background", "icons"):
         value = settings[key]
         if value is not None and (not isinstance(value, str) or not value):
             raise TransactionError(f"{key} must be a non-empty string or null")
 
-    schedule = settings["schedule"]
-    if not isinstance(schedule, dict) or set(schedule) != {"location", "sunriseOffsetMinutes", "sunsetOffsetMinutes"}:
-        raise TransactionError("schedule fields do not match schema version 1")
-    for key in ("sunriseOffsetMinutes", "sunsetOffsetMinutes"):
-        value = schedule[key]
-        if isinstance(value, bool) or not isinstance(value, int) or not -180 <= value <= 180:
-            raise TransactionError(f"schedule.{key} must be an integer between -180 and 180")
-
-    location = schedule["location"]
-    if location is not None:
-        if not isinstance(location, dict) or set(location) != {"latitude", "longitude", "timeZone"}:
-            raise TransactionError("schedule.location must contain latitude, longitude, and timeZone")
-        latitude, longitude, time_zone = location["latitude"], location["longitude"], location["timeZone"]
-        if isinstance(latitude, bool) or not isinstance(latitude, (int, float)) or not math.isfinite(latitude) or not -90 <= latitude <= 90:
-            raise TransactionError("schedule.location.latitude must be between -90 and 90")
-        if isinstance(longitude, bool) or not isinstance(longitude, (int, float)) or not math.isfinite(longitude) or not -180 <= longitude <= 180:
-            raise TransactionError("schedule.location.longitude must be between -180 and 180")
-        if not isinstance(time_zone, str) or not time_zone:
-            raise TransactionError("schedule.location.timeZone must be a non-empty IANA time zone")
-        try:
-            ZoneInfo(time_zone)
-        except (ZoneInfoNotFoundError, ValueError) as exc:
-            raise TransactionError(f"unknown IANA time zone: {time_zone}") from exc
-
-    if theme["mode"] == "automatic" and (theme["light"] is None or theme["dark"] is None or location is None):
-        raise TransactionError("automatic mode requires both themes and a configured location/time zone")
+    if theme["mode"] == "automatic" and (theme["light"] is None or theme["dark"] is None):
+        raise TransactionError("automatic mode requires both themes")
 
     return settings
 
@@ -237,6 +212,8 @@ def validate_for_apply(settings: object, catalog_ids: Mapping[str, set[str]]) ->
         "backgrounds": [validated["background"]],
         "icons": [validated["icons"]],
     }
+    if validated["unlock"] is not None:
+        required["unlocks"] = [validated["unlock"]]
     for catalog, selected in required.items():
         available = catalog_ids.get(catalog)
         if not isinstance(available, set):

@@ -1,6 +1,8 @@
 pragma ComponentBehavior: Bound
 
 import QtQuick
+import QtQuick.Controls as Controls
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -16,19 +18,44 @@ Panel {
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
-  property string inventorySummary: "Loading the Omarchy appearance inventory…"
-  property var applications: []
-  property string transactionSummary: "Checking transaction history…"
-  property string transactionError: ""
-  property string transactionNotice: ""
-  property string transactionAction: "status"
-  property var transactions: []
-  property bool transactionBusy: false
+  readonly property int selectorHeight: Math.round(Style.font.body * 1.95)
+  readonly property real selectorFontPointSize: Style.font.body * 0.99
+  property var fonts: []
+  property var themes: []
+  property var unlockDesigns: []
+  property var backgrounds: []
+  property var icons: []
+  property var themeModes: [
+    { id: "automatic", name: "Automatic" },
+    { id: "light", name: "Light all day" },
+    { id: "dark", name: "Dark all day" }
+  ]
+  property var fontSizes: [
+    { id: 8, name: "8 pt" }, { id: 9, name: "9 pt" },
+    { id: 10, name: "10 pt" }, { id: 11, name: "11 pt" },
+    { id: 12, name: "12 pt" }, { id: 13, name: "13 pt" },
+    { id: 14, name: "14 pt" }, { id: 16, name: "16 pt" },
+    { id: 18, name: "18 pt" }, { id: 20, name: "20 pt" },
+    { id: 24, name: "24 pt" }, { id: 28, name: "28 pt" },
+    { id: 32, name: "32 pt" }, { id: 36, name: "36 pt" },
+    { id: 48, name: "48 pt" }
+  ]
+  property string selectedSystemFontId: ""
+  property string selectedTerminalFontId: ""
+  property int selectedSystemSize: 12
+  property int selectedTerminalSize: 12
+  property string selectedThemeMode: "automatic"
+  property string selectedLightThemeId: ""
+  property string selectedDarkThemeId: ""
+  property string selectedUnlockId: ""
+  property string selectedUnlockPreview: ""
+  property string selectedBackgroundId: ""
+  property string selectedIconId: ""
+  property bool inventoryLoaded: false
 
   function open() {
     root.controller.show()
     refreshInventory()
-    refreshTransactions()
   }
 
   function close() {
@@ -51,68 +78,60 @@ Panel {
     inventoryProcess.running = true
   }
 
-  function refreshTransactions() {
-    runTransaction("status")
-  }
-
-  function runTransaction(action) {
-    if (transactionBusy) return
-    transactionBusy = true
-    transactionError = ""
-    if (action !== "status") transactionNotice = ""
-    transactionAction = action
-    transactionProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")), "transaction", action]
-    transactionProcess.running = true
-  }
-
-  function adoptTransactionOutput(raw) {
-    try {
-      var data = JSON.parse(String(raw || "{}"))
-      if (transactionAction === "status") {
-        transactions = data.transactions || []
-        var pending = transactions.filter(function(item) {
-          return ["prepared", "applying", "rolling_back", "recovery_required"].indexOf(item.state) >= 0
-        })
-        transactionSummary = pending.length
-          ? String(pending.length) + " interrupted transaction(s) need recovery."
-          : String(transactions.length) + " transaction(s); no recovery is pending."
-      } else if (transactionAction === "recover") {
-        var recovered = data.recovered || []
-        transactionNotice = recovered.length
-          ? "Recovered transaction(s): " + recovered.join(", ")
-          : "No interrupted transactions needed recovery."
-      } else if (transactionAction === "rollback") {
-        transactionNotice = "Reverted transaction " + String(data.rolledBack || "") + "."
-      }
-    } catch (e) {
-      transactionError = "Could not read transaction status output."
-    }
-  }
-
-  function pendingTransactionCount() {
-    return transactions.filter(function(item) {
-      return ["prepared", "applying", "rolling_back", "recovery_required"].indexOf(item.state) >= 0
-    }).length
-  }
-
-  function committedTransactionCount() {
-    return transactions.filter(function(item) { return item.state === "committed" }).length
-  }
-
   function adoptInventory(raw) {
     try {
       var data = JSON.parse(String(raw || "{}"))
-      applications = data.applications || []
-      inventorySummary = "Catalogs found: "
-        + String((data.catalogs && data.catalogs.themes || []).length) + " themes, "
-        + String((data.catalogs && data.catalogs.fonts || []).length) + " font families, "
-        + String((data.catalogs && data.catalogs.icons || []).length) + " icon themes, "
-        + String((data.catalogs && data.catalogs.backgrounds || []).length) + " backgrounds. "
-        + String(Object.values(data.catalog_review || {}).reduce(function(sum, item) { return sum + Number(item.selectable || 0) }, 0))
-        + " entries are selectable after provenance and license review."
+      var entries = data.catalog_entries || ({})
+      fonts = entries.fonts || []
+      themes = entries.themes || []
+      unlockDesigns = entries.unlocks || []
+      backgrounds = (entries.backgrounds || []).map(function(entry) {
+        var copy = Object.assign({}, entry)
+        var source = String(entry.source || "")
+        var themeName = source.match(/\/themes\/([^/]+)\/backgrounds\//)
+        var userThemeName = source.match(/\/omarchy\/backgrounds\/([^/]+)\//)
+        var collection = themeName ? themeName[1] : (userThemeName ? userThemeName[1] : "")
+        if (collection) collection = collection.replace(/[-_]+/g, " ").replace(/\b\w/g, function(letter) { return letter.toUpperCase() })
+        copy.label = entry.name + (collection ? " — " + collection : "")
+        return copy
+      })
+      icons = entries.icons || []
+
+      function idFor(records, name) {
+        var entry = records.find(function(item) { return item.name === name })
+        return entry ? entry.id : ""
+      }
+
+      if (!inventoryLoaded) {
+        selectedSystemFontId = idFor(fonts, "Aileron")
+        selectedTerminalFontId = idFor(fonts, "Office Code Pro")
+        selectedThemeMode = "automatic"
+        selectedLightThemeId = idFor(themes, "dracula-pro-alucard")
+        selectedDarkThemeId = idFor(themes, "dracula-pro-van-helsing")
+        var preferredUnlock = unlockDesigns.find(function(entry) { return entry.name === "dracula-pro-van-helsing" })
+        selectedUnlockId = preferredUnlock ? preferredUnlock.id : ""
+        selectedUnlockPreview = preferredUnlock ? preferredUnlock.preview : ""
+        var preferredBackground = backgrounds.find(function(entry) {
+          return String(entry.source).endsWith("/Documents/Fonts_Icons_Wallpaper/Backgrounds/1333929.jpeg")
+        })
+        selectedBackgroundId = preferredBackground ? preferredBackground.id : idFor(backgrounds, "1333929.jpeg")
+        selectedIconId = idFor(icons, "Tela-circle-dracula-dark-van-helsing")
+        inventoryLoaded = true
+      }
     } catch (e) {
-      inventorySummary = "Could not read the appearance inventory. Open the plugin's diagnostic output for details."
-      applications = []
+      fonts = []
+      themes = []
+      unlockDesigns = []
+      backgrounds = []
+      icons = []
+      selectedSystemFontId = ""
+      selectedTerminalFontId = ""
+      selectedLightThemeId = ""
+      selectedDarkThemeId = ""
+      selectedUnlockId = ""
+      selectedUnlockPreview = ""
+      selectedBackgroundId = ""
+      selectedIconId = ""
     }
   }
 
@@ -124,7 +143,7 @@ Panel {
     open: root.opened
     centerOnBar: true
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(520)
+    contentWidth: panel.fittedContentWidth(760)
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
     PanelKeyCatcher {
@@ -149,108 +168,190 @@ Panel {
           Item { width: 1; height: 4 }
 
           Text {
-            text: "Look & Feel"
+            text: "Set your system-wide look and feel in one location"
             color: root.barForeground
             font.family: root.fontFamily
-            font.pixelSize: Style.font.heading
+            font.pixelSize: Math.round(Style.font.heading * 1.25)
             font.weight: Font.DemiBold
           }
 
-          PanelSectionHeader { text: "APPLY AND RECOVERY" }
+          GridLayout {
+            id: settingsGrid
+            width: content.width
+            columns: 2
+            columnSpacing: 18
+            rowSpacing: 10
 
-          Text {
-            width: parent.width
-            text: "Apply is unavailable until a reviewed application adapter is enabled. No application settings can be changed by this build."
-            color: root.barForeground
-            opacity: 0.78
-            wrapMode: Text.WordWrap
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-          }
+            PanelSectionHeader { text: "TYPOGRAPHY"; Layout.columnSpan: 2 }
 
-          Row {
-            width: parent.width
-            spacing: 8
-            Rectangle {
-              width: 116; height: 34; radius: 5
-              color: "#363636"; opacity: 0.55
-              Text { anchors.centerIn: parent; text: "Apply (unavailable)"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Style.font.small }
-            }
-            Rectangle {
-              width: 130; height: 34; radius: 5
-              color: root.pendingTransactionCount() > 0 && !root.transactionBusy ? Color.accent : "#363636"
-              opacity: root.pendingTransactionCount() > 0 && !root.transactionBusy ? 1 : 0.55
-              Text { anchors.centerIn: parent; text: "Recover interrupted"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Style.font.small }
-              MouseArea { anchors.fill: parent; enabled: root.pendingTransactionCount() > 0 && !root.transactionBusy; onClicked: root.runTransaction("recover") }
-            }
-            Rectangle {
-              width: 112; height: 34; radius: 5
-              color: root.committedTransactionCount() > 0 && !root.transactionBusy ? Color.accent : "#363636"
-              opacity: root.committedTransactionCount() > 0 && !root.transactionBusy ? 1 : 0.55
-              Text { anchors.centerIn: parent; text: "Revert last Apply"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Style.font.small }
-              MouseArea { anchors.fill: parent; enabled: root.committedTransactionCount() > 0 && !root.transactionBusy; onClicked: root.runTransaction("rollback") }
-            }
-          }
-
-          Text {
-            width: parent.width
-            text: root.transactionError || (root.transactionNotice
-              ? root.transactionSummary + "\n" + root.transactionNotice
-              : root.transactionSummary)
-            color: root.transactionError ? "#ff7777" : root.barForeground
-            opacity: 0.82
-            wrapMode: Text.WordWrap
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.small
-          }
-
-          Text {
-            width: parent.width
-            text: "One Omarchy appearance authority. This first build inventories the available sources and priority applications; setting application is not enabled yet."
-            color: root.barForeground
-            opacity: 0.78
-            wrapMode: Text.WordWrap
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-          }
-
-          PanelSectionHeader { text: "APPLICATION COVERAGE" }
-
-          Repeater {
-            model: root.applications
-            delegate: Row {
-              required property var modelData
-              width: content.width
-              spacing: 8
-              Text {
-                text: modelData.available ? "●" : "○"
-                color: modelData.available ? Color.accent : root.barForeground
-                opacity: modelData.available ? 1 : 0.55
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "System font"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.fonts; textRole: "name"; valueRole: "id"
+                currentIndex: root.fonts.findIndex(function(entry) { return entry.id === root.selectedSystemFontId })
+                displayText: currentIndex >= 0 ? currentText : "Select font"
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-              }
-              Text {
-                text: modelData.name + (modelData.available ? " — found" : " — not installed")
-                color: root.barForeground
-                opacity: 0.85
+                onActivated: function(index) { root.selectedSystemFontId = root.fonts[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "System size"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.fontSizes; textRole: "name"; valueRole: "id"
+                currentIndex: root.fontSizes.findIndex(function(entry) { return entry.id === root.selectedSystemSize })
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                onActivated: function(index) { root.selectedSystemSize = root.fontSizes[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "Terminal font"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.fonts; textRole: "name"; valueRole: "id"
+                currentIndex: root.fonts.findIndex(function(entry) { return entry.id === root.selectedTerminalFontId })
+                displayText: currentIndex >= 0 ? currentText : "Select font"
+                font.family: root.fontFamily
+                onActivated: function(index) { root.selectedTerminalFontId = root.fonts[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "Terminal size"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.fontSizes; textRole: "name"; valueRole: "id"
+                currentIndex: root.fontSizes.findIndex(function(entry) { return entry.id === root.selectedTerminalSize })
+                font.family: root.fontFamily
+                onActivated: function(index) { root.selectedTerminalSize = root.fontSizes[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+
+            PanelSectionHeader { text: "THEME"; Layout.columnSpan: 2 }
+            ColumnLayout {
+              Layout.columnSpan: 2
+              Layout.fillWidth: true
+              Text { text: "Mode"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.themeModes; textRole: "name"; valueRole: "id"
+                currentIndex: root.themeModes.findIndex(function(entry) { return entry.id === root.selectedThemeMode })
+                font.family: root.fontFamily
+                onActivated: function(index) { root.selectedThemeMode = root.themeModes[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "Light theme"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.themes; textRole: "displayName"; valueRole: "id"
+                currentIndex: root.themes.findIndex(function(entry) { return entry.id === root.selectedLightThemeId })
+                displayText: currentIndex >= 0 ? currentText : "Select light theme"
+                font.family: root.fontFamily
+                onActivated: function(index) { root.selectedLightThemeId = root.themes[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "Dark theme"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.themes; textRole: "displayName"; valueRole: "id"
+                currentIndex: root.themes.findIndex(function(entry) { return entry.id === root.selectedDarkThemeId })
+                displayText: currentIndex >= 0 ? currentText : "Select dark theme"
+                font.family: root.fontFamily
+                onActivated: function(index) { root.selectedDarkThemeId = root.themes[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "Boot unlock design"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                id: unlockCombo
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.unlockDesigns; textRole: "displayName"; valueRole: "id"
+                currentIndex: root.unlockDesigns.findIndex(function(entry) { return entry.id === root.selectedUnlockId })
+                displayText: currentIndex >= 0 ? currentText : "Select unlock design"
+                font.family: root.fontFamily
+                onActivated: function(index) {
+                  var entry = root.unlockDesigns[index]
+                  root.selectedUnlockId = entry.id
+                  root.selectedUnlockPreview = entry.preview || ""
+                  if (root.selectedUnlockPreview !== "") unlockPreviewDialog.open()
+                }
+                font.pointSize: root.selectorFontPointSize
+}
+            }
+            ColumnLayout {
+              Layout.fillWidth: true
+              Text { text: "Icon theme"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.icons; textRole: "displayName"; valueRole: "id"
+                currentIndex: root.icons.findIndex(function(entry) { return entry.id === root.selectedIconId })
+                displayText: currentIndex >= 0 ? currentText : "Select icon theme"
+                font.family: root.fontFamily
+                onActivated: function(index) { root.selectedIconId = root.icons[index].id }
+                font.pointSize: root.selectorFontPointSize
               }
+            }
+
+            PanelSectionHeader { text: "DESKTOP APPEARANCE"; Layout.columnSpan: 2 }
+            ColumnLayout {
+              Layout.columnSpan: 2
+              Layout.fillWidth: true
+              Text { text: "Background"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: Math.round(Style.font.bodySmall * 1.3) }
+              Controls.ComboBox {
+                Layout.fillWidth: true
+                Layout.preferredHeight: root.selectorHeight
+                model: root.backgrounds; textRole: "label"; valueRole: "id"
+                currentIndex: root.backgrounds.findIndex(function(entry) { return entry.id === root.selectedBackgroundId })
+                displayText: currentIndex >= 0 ? currentText : "Select background"
+                font.family: root.fontFamily
+                onActivated: function(index) { root.selectedBackgroundId = root.backgrounds[index].id }
+                font.pointSize: root.selectorFontPointSize
+}
             }
           }
 
-          PanelSectionHeader { text: "SOURCE CATALOGS" }
-          Text {
-            width: parent.width
-            text: root.inventorySummary
-            color: root.barForeground
-            opacity: 0.78
-            wrapMode: Text.WordWrap
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-          }
+          Item { width: 1; height: 8 }
+        }
+      }
 
-          Item { width: 1; height: 4 }
+      Controls.Dialog {
+        id: unlockPreviewDialog
+        title: "Boot unlock preview"
+        modal: true
+        anchors.centerIn: parent
+        width: Math.min(640, panel.availableCardWidth - 40)
+        height: Math.min(440, panel.availableCardHeight - 40)
+        standardButtons: Controls.Dialog.Close
+        contentItem: Image {
+          source: root.selectedUnlockPreview ? "file://" + root.selectedUnlockPreview : ""
+          fillMode: Image.PreserveAspectFit
+          asynchronous: true
+          cache: false
         }
       }
     }
@@ -264,30 +365,11 @@ Panel {
     }
     onExited: function(code) {
       if (code !== 0) {
-        root.inventorySummary = "Inventory scan failed (exit " + String(code) + ")."
-        root.applications = []
-      }
-    }
-  }
-
-  Process {
-    id: transactionProcess
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.adoptTransactionOutput(text)
-    }
-    stderr: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: {
-        if (String(text || "").trim()) root.transactionError = String(text).trim()
-      }
-    }
-    onExited: function(code) {
-      root.transactionBusy = false
-      if (code !== 0) {
-        if (!root.transactionError) root.transactionError = "Transaction " + root.transactionAction + " failed (exit " + String(code) + ")."
-      } else if (root.transactionAction !== "status") {
-        root.refreshTransactions()
+        root.fonts = []
+        root.themes = []
+        root.unlockDesigns = []
+        root.backgrounds = []
+        root.icons = []
       }
     }
   }
