@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "si.omarchy-look-and-feel",
+  "name": "Omarchy Look & Feel",
+  "version": "0.1.0",
+  "author": "si",
+  "license": "MIT",
+  "description": "One Omarchy control page for system and terminal fonts, themes, backgrounds, and icons.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Look & Feel",
+    "description": "Set Omarchy fonts, themes, backgrounds, and icons in one place.",
+    "category": "Appearance",
+    "defaultSection": "right",
+    "allowMultiple": false
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "typography": {
+    "system": { "fontId": null, "sizePt": 12 },
+    "terminal": { "fontId": null, "sizePt": 12 }
+  },
+  "theme": {
+    "mode": "dark",
+    "light": null,
+    "dark": null
+  },
+  "background": null,
+  "icons": null,
+  "schedule": {
+    "location": null,
+    "sunriseOffsetMinutes": 0,
+    "sunsetOffsetMinutes": 0
+  }
+}

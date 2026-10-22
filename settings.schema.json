@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omarchy-look-and-feel.local/schema/settings-v1.json",
+  "title": "Omarchy Look & Feel settings",
+  "description": "The plugin-owned appearance choices. Values reference catalog entries; adapters translate them to application settings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "typography", "theme", "background", "icons", "schedule"],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "typography": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "terminal"],
+      "properties": {
+        "system": { "$ref": "#/$defs/face" },
+        "terminal": { "$ref": "#/$defs/face" }
+      }
+    },
+    "theme": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "light", "dark"],
+      "properties": {
+        "mode": { "enum": ["light", "dark", "automatic"] },
+        "light": { "type": ["string", "null"], "minLength": 1 },
+        "dark": { "type": ["string", "null"], "minLength": 1 }
+      }
+    },
+    "background": {
+      "description": "A catalog ID or user-selected image URI, independent of theme.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "icons": {
+      "description": "Installed icon-theme catalog ID.",
+      "type": ["string", "null"],
+      "minLength": 1
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "sunriseOffsetMinutes", "sunsetOffsetMinutes"],
+      "properties": {
+        "location": {
+          "description": "Manually configured coordinates and IANA time zone. No location lookup or network request is implied.",
+          "oneOf": [
+            { "type": "null" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["latitude", "longitude", "timeZone"],
+              "properties": {
+                "latitude": { "type": "number", "minimum": -90, "maximum": 90 },
+                "longitude": { "type": "number", "minimum": -180, "maximum": 180 },
+                "timeZone": { "type": "string", "minLength": 1 }
+              }
+            }
+          ]
+        },
+        "sunriseOffsetMinutes": { "type": "integer", "minimum": -180, "maximum": 180 },
+        "sunsetOffsetMinutes": { "type": "integer", "minimum": -180, "maximum": 180 }
+      }
+    }
+  },
+  "$defs": {
+    "face": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fontId", "sizePt"],
+      "properties": {
+        "fontId": { "type": ["string", "null"], "minLength": 1 },
+        "sizePt": { "type": "number", "minimum": 6, "maximum": 48 }
+      }
+    }
+  }
+}

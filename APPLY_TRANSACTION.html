@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omarchy Look &amp; Feel — Apply and rollback contract</title>
+  <style>
+    :root { color-scheme: light; --page:#f5f5f5; --paper:#fcfcfc; --panel:#f7f7fb; --ink:#1f1f1f; --muted:#4b4b56; --rule:#cfcfde; --purple:#644ac9; --cyan:#036a96; --green:#14710a; --orange:#a34d14; --red:#cb3a2a; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:32px 18px; background:var(--page); color:var(--ink); font:12pt/1.5 "Visby CF"; }
+    main { max-width:1000px; margin:0 auto; padding:34px 42px; background:var(--paper); border:1px solid var(--rule); }
+    header { padding-bottom:18px; border-bottom:3px solid var(--purple); }
+    h1 { margin:0 0 8px; font-size:20pt; line-height:1.2; font-weight:700; }
+    h2 { margin:28px 0 9px; padding-bottom:5px; border-bottom:1px solid var(--rule); font-size:15pt; font-weight:600; }
+    h3 { margin:18px 0 6px; color:var(--cyan); font-size:12.75pt; font-weight:600; }
+    p { margin:8px 0 12px; }
+    ul,ol { padding-left:24px; margin:8px 0 14px; }
+    li { margin:5px 0; }
+    .meta { display:grid; grid-template-columns:130px 1fr; gap:4px 12px; margin-top:16px; color:var(--muted); font-size:10pt; }
+    .callout { margin:16px 0; padding:13px 16px; background:var(--panel); border-left:4px solid var(--purple); }
+    table { width:100%; margin:12px 0 18px; border-collapse:collapse; font-size:10.5pt; }
+    th,td { padding:8px 10px; border:1px solid var(--rule); text-align:left; vertical-align:top; }
+    th { background:var(--panel); font-weight:600; }
+    code { font-family:"Visby CF"; font-size:10pt; overflow-wrap:anywhere; }
+    .good { color:var(--green); font-weight:600; }
+    .caution { color:var(--orange); font-weight:600; }
+    footer { margin-top:30px; padding-top:10px; border-top:1px solid var(--rule); color:var(--muted); font-size:9pt; }
+    @media print { body { padding:0; background:#fff; font-size:11pt; } main { max-width:none; padding:0; border:0; } h2,h3 { break-after:avoid; } table,.callout { break-inside:avoid; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Apply and rollback contract</h1>
+    <p>Transaction rules for changing Omarchy Look &amp; Feel settings across application adapters.</p>
+    <div class="meta"><strong>Status</strong><span>Design contract; no configuration-writing adapter is enabled</span><strong>Date</strong><span>2026-10-21</span><strong>Settings contract</strong><span><code>settings.schema.json</code>, version 1</span></div>
+  </header>
+
+  <h2>Purpose and limits</h2>
+  <p>An Apply operation changes several independent application settings as one recoverable user action. It must either leave the selected values in place and verify them, or restore the recorded pre-Apply state and clearly report any incomplete recovery.</p>
+  <div class="callout"><strong>Scope:</strong> the controller may write only explicitly registered user-level targets under the user's home directory or through a documented per-user desktop API. It must not use <code>sudo</code>, edit package-owned files, run arbitrary shell commands from settings, or claim reversibility for a target it cannot restore.</div>
+
+  <h2>Transaction sequence</h2>
+  <ol>
+    <li><strong>Validate.</strong> Validate the draft against <code>settings.schema.json</code>, confirm every selected ID exists in the current catalog, and check adapter preconditions. Automatic theme mode requires both theme IDs and a configured latitude, longitude, and IANA time zone.</li>
+    <li><strong>Acquire the transaction lock.</strong> Allow one apply or rollback at a time. Before starting a new Apply, restore every interrupted transaction under this lock. If recovery fails, stop and preserve its journal and snapshots.</li>
+    <li><strong>Snapshot exact targets.</strong> Record every file or supported API value an adapter may change before making any change. For regular user-owned files, preserve bytes, POSIX mode bits, and whether the file existed. Reject symlinks and paths outside the registered target list. Store snapshots in a private transaction directory with mode <code>0700</code>; files use mode <code>0600</code>.</li>
+    <li><strong>Write a durable journal.</strong> Record transaction ID, previous canonical settings, proposed settings, target list, snapshot hashes, and phase. Flush the journal before the first target mutation.</li>
+    <li><strong>Apply in a fixed order.</strong> Before each adapter runs, mark its target as in progress and flush the journal. Adapters must be idempotent, bounded to their declared targets, and expose a readback check.</li>
+    <li><strong>Verify readback.</strong> Read every changed target and verify the intended state. A successful process exit alone is not proof of application.</li>
+    <li><strong>Commit canonical settings.</strong> Write the new settings file through a temporary file in the same directory, flush it, then atomically rename it into place. Mark the journal committed only after the settings file and all adapter readbacks agree.</li>
+  </ol>
+
+  <h2>Atomic file writes</h2>
+  <p>For each registered file target, write the complete new contents to a uniquely named temporary file beside the target. Flush the temporary file, apply the expected mode, and atomically replace the target. Flush the containing directory where the platform supports it. Never truncate a live configuration file in place. If a target needs a multi-file update, its adapter must enumerate all files in the transaction snapshot before changing the first one.</p>
+  <p>The first implementation supports regular files owned by the current user and restores their contents and POSIX mode bits. It does not capture ACLs, extended attributes, or ownership changes. Adapters must not manage files that depend on those metadata being preserved. Before each write, it compares the target with the saved snapshot; if another process changed the target, it preserves that change and marks recovery required rather than overwriting it during rollback.</p>
+
+  <h2>Failure and interruption recovery</h2>
+  <table>
+    <thead><tr><th>Condition</th><th>Required behavior</th></tr></thead>
+    <tbody>
+      <tr><td>Validation or precondition failure</td><td>Make no changes. Show the failed check and keep the draft available for correction.</td></tr>
+      <tr><td>Adapter write or verification failure</td><td>Stop applying new targets. Restore changed targets in reverse order from the pre-Apply snapshots, then restore the previous canonical settings. Verify each restoration and report any target that could not be restored.</td></tr>
+      <tr><td>Process or machine interruption before commit</td><td>On controller startup, detect the prepared/in-progress journal and roll back from its snapshots before accepting another Apply.</td></tr>
+      <tr><td>Rollback failure</td><td>Keep the journal and snapshots intact, mark recovery required, show the affected targets, and block further Apply operations until recovery is completed.</td></tr>
+      <tr><td>Target is not fully reversible</td><td>Do not include it in Apply. Treat it as an implementation blocker; do not downgrade it to a silent exception.</td></tr>
+    </tbody>
+  </table>
+
+  <h2>User rollback and backup retention</h2>
+  <ul>
+    <li>Provide a Revert action that restores the complete pre-Apply state for the most recent committed transaction, including the previous canonical settings.</li>
+    <li>Retain snapshots for committed transactions for at least 30 days and keep the 20 most recent transactions, whichever retains more. Never prune an in-progress or recovery-required transaction.</li>
+    <li>Before pruning, verify the transaction is committed and the snapshot hashes match its journal. Keep metadata and hashes with the retained snapshot.</li>
+    <li>Back up only the exact files an adapter manages. Do not copy whole browser profiles or unrelated application directories, which may contain credentials and private data.</li>
+  </ul>
+
+  <h2>Application restarts and session APIs</h2>
+  <p>If an application reads configuration only at startup, the adapter must report “restart required” after readback confirms the saved file. The controller must not force-close user applications. For session APIs such as theme or icon settings, the adapter must capture the prior value and provide a compensating restore operation; if the API cannot report and restore its prior value, it is not transaction-safe.</p>
+
+  <h2>Acceptance gates before the first writer</h2>
+  <ol>
+    <li>Each adapter declares its exact target paths or API keys, required preconditions, readback method, and restoration method.</li>
+    <li>The controller can recover an interrupted transaction before starting new work.</li>
+    <li>Apply failure and rollback failure are visible and leave durable recovery information.</li>
+    <li>The settings file is never committed while any adapter target is unverified.</li>
+    <li>No adapter writes outside its allowlist or into package-owned Omarchy files.</li>
+  </ol>
+
+  <p class="good">Current implementation state: the transaction core is in <code>transaction.py</code>. Before a new Apply, it recovers interrupted transactions under the transaction lock and records recovered transaction IDs in the new journal. The controller also exposes explicit status, recovery, and rollback commands. Its application target allowlist is empty, so no application configuration can be written yet. A user-facing rollback control still needs integration before the Apply UI is exposed. No adapter is enabled.</p>
+  <footer>Project: Omarchy Look &amp; Feel. This specification complements <code>settings.schema.json</code> and the approved owner requirements in <code>DESIGN_BRIEF.md</code>.</footer>
+</main>
+</body>
+</html>
