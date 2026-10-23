@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://omarchy-look-and-feel.local/schema/terminal-font-v2.json",
+  "title": "Omarchy Look & Feel terminal font selection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "terminalFontId", "fontFamily", "fontSizePt"],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "terminalFontId": { "type": "string", "minLength": 1 },
+    "fontFamily": { "type": "string", "minLength": 1 },
+    "fontSizePt": { "type": "integer", "minimum": 6, "maximum": 48 }
+  }
+}

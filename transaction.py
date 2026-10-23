@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Durable, reversible file transaction core for Omarchy Look & Feel.
-
-No application targets are enabled yet. A future adapter must add its exact
-user-level file to FILE_TARGETS before this module can write that target.
-This module never invokes a shell command or writes outside the user's home.
-"""
+"""Durable, reversible file transaction core for Omarchy Look & Feel."""
 
 from __future__ import annotations
 
@@ -23,6 +18,7 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Mapping
+from mail_font_adapters import betterbird_prefs_relative_path
 
 
 SCHEMA_VERSION = 2
@@ -34,9 +30,39 @@ MIN_RETENTION_SECONDS = 30 * 24 * 60 * 60
 TRANSACTION_ID_RE = re.compile(r"^[0-9]{8}T[0-9]{6}Z-[0-9a-f]{12}$")
 TARGET_ID_RE = re.compile(r"^[a-z][a-z0-9_.-]{0,63}$")
 
-# Intentionally empty until each adapter has a reviewed recovery method.
-# Add IDs mapped to paths relative to HOME; absolute paths are not accepted.
-FILE_TARGETS: dict[str, str] = {}
+# Application targets are exact, user-level paths relative to HOME.
+# Absolute paths are not accepted by the transaction core.
+_configured_home = Path(os.environ.get("XDG_CONFIG_HOME", str(Path.home() / ".config")))
+if not _configured_home.is_absolute():
+    _configured_home = Path.home() / ".config"
+try:
+    _configured_home_rel = _configured_home.relative_to(Path.home())
+except ValueError:
+    _configured_home_rel = Path(".config")
+_ghostty_dir = _configured_home / "ghostty"
+_ghostty_filename = "config.ghostty" if (_ghostty_dir / "config.ghostty").exists() else "config"
+FILE_TARGETS: dict[str, str] = {
+    "ghostty-config": (_configured_home_rel / "ghostty" / _ghostty_filename).as_posix(),
+    "ghostty-font-overlay": (_configured_home_rel / "ghostty" / "look-and-feel-font.conf").as_posix(),
+    "terminal-font-selection": (_configured_home_rel / "ghostty" / "look-and-feel-font-selection.json").as_posix(),
+    "gtk3-settings": (_configured_home_rel / "gtk-3.0" / "settings.ini").as_posix(),
+    "gtk4-settings": (_configured_home_rel / "gtk-4.0" / "settings.ini").as_posix(),
+    "qt5ct-settings": (_configured_home_rel / "qt5ct" / "qt5ct.conf").as_posix(),
+    "qt6ct-settings": (_configured_home_rel / "qt6ct" / "qt6ct.conf").as_posix(),
+    "fontconfig-monospace": (_configured_home_rel / "fontconfig" / "fonts.conf").as_posix(),
+    "omarchy-shell-font": (_configured_home_rel / "omarchy" / "shell-font.json").as_posix(),
+    "alacritty-config": (_configured_home_rel / "alacritty" / "alacritty.toml").as_posix(),
+    "kitty-config": (_configured_home_rel / "kitty" / "kitty.conf").as_posix(),
+    "foot-config": (_configured_home_rel / "foot" / "foot.ini").as_posix(),
+    "wezterm-config": (_configured_home_rel / "wezterm" / "wezterm.lua").as_posix(),
+    "cursor-settings": (_configured_home_rel / "Cursor" / "User" / "settings.json").as_posix(),
+    "typora-settings": (_configured_home_rel / "Typora" / "conf" / "conf.user.json").as_posix(),
+    "typora-base-user-css": (_configured_home_rel / "Typora" / "themes" / "base.user.css").as_posix(),
+    "brave-default-preferences": (_configured_home_rel / "BraveSoftware" / "Brave-Browser" / "Default" / "Preferences").as_posix(),
+}
+_betterbird_prefs = betterbird_prefs_relative_path()
+if _betterbird_prefs:
+    FILE_TARGETS["betterbird-prefs"] = _betterbird_prefs
 
 
 class TransactionError(RuntimeError):
@@ -282,9 +308,9 @@ def _snapshot(path: Path, snapshot_dir: Path, snapshot_name: str) -> dict[str, o
             raise TransactionError(f"only regular files can be managed: {path}")
         if info.st_uid != os.getuid():
             raise TransactionError(f"refusing to replace a file not owned by the current user: {path}")
+        data = source.read(MAX_TARGET_BYTES + 1)
     if stat.S_IMODE(info.st_mode) & ~0o777:
         raise TransactionError(f"refusing a target with special permission bits: {path}")
-        data = source.read(MAX_TARGET_BYTES + 1)
     if len(data) > MAX_TARGET_BYTES:
         raise TransactionError(f"refusing to snapshot a file larger than {MAX_TARGET_BYTES} bytes: {path}")
     target = snapshot_dir / snapshot_name
@@ -416,14 +442,29 @@ def _journal_targets(journal: dict[str, object]) -> list[dict[str, object]]:
             or item["appliedMode"] & ~0o777
         ):
             raise TransactionError("invalid applied mode in transaction journal")
-        if target_id != "settings" and FILE_TARGETS.get(target_id) != relative:
+        if target_id != "settings" and FILE_TARGETS.get(target_id) != relative and not _historical_mail_target(target_id, relative):
             raise TransactionError(f"journal target is no longer in the allowlist: {target_id}")
         if target_id == "settings" and relative != str(settings_path().relative_to(_home())):
             raise TransactionError("settings path changed since the transaction was prepared")
         parsed.append(item)
-    if "settings" not in seen_ids:
+    if "settings" in seen_ids and sum(item["id"] == "settings" for item in parsed) != 1:
         raise TransactionError("transaction journal must contain exactly one settings snapshot")
+    if not parsed:
+        raise TransactionError("transaction journal must contain at least one target")
     return parsed
+
+
+def _historical_mail_target(target_id: str, relative: str) -> bool:
+    """Keep old Betterbird snapshots rollback-eligible if profile discovery changes."""
+    if target_id != "betterbird-prefs":
+        return False
+    rel = Path(relative)
+    if rel.is_absolute() or ".." in rel.parts or not rel.parts or rel.parts[-1] != "prefs.js":
+        return False
+    if any(part in {"", "."} for part in rel.parts):
+        return False
+    profile_root = (".thunderbird",) if rel.parts[0] == ".thunderbird" else (".mozilla", "thunderbird")
+    return rel.parts[:len(profile_root)] == profile_root and len(rel.parts) > len(profile_root) + 1
 
 
 def _restore_transaction(transaction_dir: Path, journal: dict[str, object]) -> None:
@@ -630,7 +671,85 @@ def apply_settings(settings: object, target_contents: Mapping[str, bytes], catal
         return transaction_id
 
 
-def rollback_latest() -> str:
+def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str) -> str:
+    """Apply only declared application files, with durable snapshots and rollback."""
+    paths = _target_paths(target_contents)
+    directory = transactions_path()
+    with _locked(directory):
+        recovered_before_apply: list[str] = []
+        for pending_dir in _pending_transactions(directory):
+            pending_journal = _load_journal(pending_dir)
+            _restore_transaction(pending_dir, pending_journal)
+            recovered_before_apply.append(pending_dir.name)
+        _mkdir_private(directory)
+        transaction_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
+        transaction_dir = directory / transaction_id
+        transaction_dir.mkdir(mode=0o700)
+        before_dir = transaction_dir / "before"
+        before_dir.mkdir(mode=0o700)
+        entries: list[dict[str, object]] = []
+        try:
+            for target_id, path in paths.items():
+                snapshot = _snapshot(path, before_dir, target_id + ".before")
+                entries.append({"id": target_id, "relativePath": str(path.relative_to(_home())), "before": snapshot})
+            _fsync_dir(before_dir)
+            journal: dict[str, object] = {
+                "schemaVersion": 1, "id": transaction_id, "state": "prepared",
+                "createdAt": datetime.now(timezone.utc).isoformat(),
+                "updatedAt": datetime.now(timezone.utc).isoformat(),
+                "label": label[:80], "targets": entries,
+                "recoveredBeforeApply": recovered_before_apply,
+            }
+            _write_journal(transaction_dir / "transaction.json", journal)
+            _fsync_dir(transaction_dir)
+        except BaseException:
+            shutil.rmtree(transaction_dir, ignore_errors=True)
+            raise
+
+        try:
+            journal["state"] = "applying"
+            _write_journal(transaction_dir / "transaction.json", journal)
+            for target_id, payload in target_contents.items():
+                path = paths[target_id]
+                entry = next(item for item in entries if item["id"] == target_id)
+                before = entry["before"]
+                if not isinstance(before, dict):
+                    raise TransactionError(f"invalid target snapshot for {target_id}")
+                _assert_unchanged(path, before)
+                old_mode = before["mode"] if before["exists"] else 0o600
+                entry["appliedSha256"] = _sha256(payload)
+                entry["appliedMode"] = old_mode
+                journal["currentTarget"] = target_id
+                _write_journal(transaction_dir / "transaction.json", journal)
+                _atomic_write(path, payload, old_mode)
+                state = _current_file_state(path)
+                if state.get("sha256") != _sha256(payload) or state.get("mode") != old_mode:
+                    raise TransactionError(f"readback mismatch for target {target_id}")
+                del journal["currentTarget"]
+                journal["updatedAt"] = datetime.now(timezone.utc).isoformat()
+                _write_journal(transaction_dir / "transaction.json", journal)
+            journal["state"] = "committed"
+            journal["committedAt"] = datetime.now(timezone.utc).isoformat()
+            journal["updatedAt"] = journal["committedAt"]
+            _write_journal(transaction_dir / "transaction.json", journal)
+        except BaseException as exc:
+            try:
+                _restore_transaction(transaction_dir, journal)
+            except Exception as rollback_exc:
+                raise TransactionError(f"Apply failed ({exc}); {rollback_exc}") from exc
+            raise TransactionError(f"Apply failed and was rolled back: {exc}") from exc
+        try:
+            _prune_committed(directory)
+        except Exception as exc:
+            journal["maintenanceWarning"] = f"snapshot pruning was deferred: {exc}"
+            try:
+                _write_journal(transaction_dir / "transaction.json", journal)
+            except Exception:
+                pass
+        return transaction_id
+
+
+def rollback_latest(*, label: str | None = None) -> str:
     """Restore the snapshots from the newest committed transaction."""
     directory = transactions_path()
     _check_home_destination(directory)
@@ -645,7 +764,7 @@ def rollback_latest() -> str:
             if candidate.is_symlink() or not candidate.is_dir() or not TRANSACTION_ID_RE.fullmatch(candidate.name):
                 continue
             journal = _load_journal(candidate)
-            if journal.get("state") == "committed":
+            if journal.get("state") == "committed" and (label is None or journal.get("label") == label):
                 committed.append((candidate.stat().st_mtime, candidate))
         if not committed:
             raise TransactionError("there is no committed transaction to roll back")

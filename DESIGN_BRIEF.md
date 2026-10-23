@@ -159,13 +159,20 @@ this brief wherever they conflict.
    theme unchanged until the next calculable event. Calculations are offline
    and approximate; they do not request location or network access. The
    background choice is independent of the theme and must persist through
-   theme changes.
+   theme changes. Apply and Undo use Omarchy's supported commands, journal the
+   prior selection, and verify the active theme and wallpaper. A theme-owned
+   wallpaper is copied before Omarchy replaces its generated current-theme
+   directory, then restored by image content. Theme Undo re-applies the prior
+   Omarchy theme and cannot reverse arbitrary custom-hook side effects.
 5. **Icons:** provide an independent global icon-theme choice.
 6. **Boot unlock design:** provide a separate dropdown for Omarchy's boot
    decryption screen. Populate it only from themes that include both
    `unlock.png` and `preview-unlock.png`. The selected unlock design is
-   independent of the Light/Dark desktop themes. Applying it requires
-   a reviewed, reversible adapter for Omarchy's Plymouth integration.
+   independent of the Light/Dark desktop themes. Apply and Undo use Omarchy's
+   Plymouth integration and verify its installed artwork. This is a semantic
+   restore of the prior design; it does not snapshot every root-owned Plymouth
+   and SDDM file or verify the next-boot initramfs image. Designs whose logo
+   makes Omarchy's current readback ambiguous are not selectable.
 7. **Display setup:** monitor arrangement, resolution, orientation, and
    primary display stay outside Look and Feel. Per-display scale also remains
    in display setup.
@@ -186,8 +193,8 @@ this brief wherever they conflict.
 The canonical preference file and adapters must make these controls survive
 Omarchy actions and app/system updates. The implementation must not silently
 accept app-specific overrides for supported applications. Local solar-event
-calculation is implemented in `solar_schedule.py`; a persistent scheduler and
-Apply adapter remain future work.
+calculation is implemented in `solar_schedule.py`; Apply currently chooses the
+solar phase once, and a persistent scheduler remains future work.
 Installed app versions and control points are recorded in the application
 support matrix (Section 13); LibreOffice Fresh is absent locally.
 
@@ -424,8 +431,61 @@ compatibility review and an Apply adapter before they can be applied.
 
 ## 19. Live Omarchy unlock entries — 2026-10-22
 
+Initial read-only catalog state; current Apply/Undo behavior and its limits are
+documented in Section 21.
+
 The controller discovers unlock designs directly from the live Omarchy theme
 directories and requires both `unlock.png` and `preview-unlock.png`. The panel
 shows a dropdown and preview, preselecting Van Helsing from the owner's initial
 preferences. The selected value is transient UI state and is not saved or
 applied. Theme application remains pending an adapter.
+
+## 20. First-run application and shell font census — 2026-10-23
+
+On first inventory, discover every effective XDG desktop application entry,
+installed command-line/TUI tools without launchers, and active shell components
+that draw text. Record visible apps and hidden launch helpers, their likely
+toolkit, system UI and monospace roles, app-specific setting paths, local
+evidence, and an explicit review status. The scan must include editors,
+Markdown apps, terminals, browsers, GTK/Qt apps, Electron apps, launchers,
+docks, bars, and Quickshell widgets. Walker and similar tools such as Waybar,
+Wofi, Fuzzel, Rofi, Eww, AGS, and nwg-dock must be identified when installed;
+their absence on this machine should also be recorded.
+
+Save the machine-specific inventory under XDG state with private permissions,
+refresh it when the discovered inventory changes, and never treat discovery as
+proof that an app is ready for automatic modification. Unidentified or
+unverified control surfaces remain marked for review. Reversible adapters can
+then be added by verified shared surface and app-specific setting, with
+snapshot, readback, undo, and restart/reload evidence before a surface is
+reported as applied. The first implementation currently applies a Terminal
+font to Ghostty and a system font to Betterbird. The census also locates Omarchy Quickshell's active
+widgets and Shell Font plugin as a separate bar font surface.
+
+## 21. Omarchy theme, background, and unlock actions — 2026-10-23
+
+`appearance_actions.py` provides separate journaled Apply, readback, recovery,
+and Undo actions for themes, wallpapers, and boot unlock designs. Theme actions
+preserve the current wallpaper across Omarchy's generated theme-directory swap,
+including a private image copy when the active image is inside that directory.
+The action audit compares wallpaper content hashes, so a preserved copy still
+matches the user's selected image. History pruning protects any backup still
+used by the active wallpaper or another retained action.
+
+Omarchy documents stock themes under `$OMARCHY_PATH/themes`, user themes under
+`~/.config/omarchy/themes`, extra per-theme backgrounds under
+`~/.config/omarchy/backgrounds/<theme>`, and the current wallpaper symlink at
+`~/.local/state/omarchy/current/background`. The controller resolves
+`OMARCHY_PATH` from the environment, `/etc/omarchy.conf`, then the packaged
+`/usr/share/omarchy` fallback, and passes that validated root to noninteractive
+Omarchy commands.
+
+Theme Undo re-runs Omarchy's setter for the previous detected theme; custom
+theme-hook side effects are not snapshotted. Unlock Apply and Undo run in an
+Omarchy floating terminal for administrator authorization. The current
+readback compares installed Plymouth artwork, not the next-boot initramfs.
+Unlock entries with duplicate or default-logo hashes, or symlinked assets, are
+excluded because Omarchy's current command cannot uniquely verify them. In
+Automatic mode Apply selects the current solar phase once; future transitions
+are not scheduled. The panel's read-only audit now includes the selected theme,
+palette, background image content, and installed Plymouth design.

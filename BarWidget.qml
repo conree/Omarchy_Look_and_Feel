@@ -64,7 +64,7 @@ BarWidget {
     id: button
     anchors.fill: parent
     bar: root.bar
-    text: "Aa"
+    text: "󰏘"
     labelVisible: true
     hasVisualContent: true
     horizontalMargin: 8.75

@@ -33,22 +33,22 @@
   <header>
     <h1>Apply and rollback contract</h1>
     <p>Transaction rules for changing Omarchy Look &amp; Feel settings across application adapters.</p>
-    <div class="meta"><strong>Status</strong><span>Design contract; no configuration-writing adapter is enabled</span><strong>Date</strong><span>2026-10-22</span><strong>Settings contract</strong><span><code>settings.schema.json</code>, version 2</span></div>
+    <div class="meta"><strong>Status</strong><span>File adapters and Omarchy semantic appearance actions are enabled</span><strong>Date</strong><span>2026-10-23</span><strong>Settings contract</strong><span><code>settings.schema.json</code>, version 2</span></div>
   </header>
 
   <h2>Purpose and limits</h2>
-  <p>An Apply operation changes several independent application settings as one recoverable user action. It must either leave the selected values in place and verify them, or restore the recorded pre-Apply state and clearly report any incomplete recovery.</p>
-  <div class="callout"><strong>Scope:</strong> the controller may write only explicitly registered user-level targets under the user's home directory or through a documented per-user desktop API. It must not use <code>sudo</code>, edit package-owned files, run arbitrary shell commands from settings, or claim reversibility for a target it cannot restore.</div>
+  <p>An Apply operation changes application settings as one recoverable user action. A scoped adapter may transact only its declared application files when canonical settings are not being committed. It must either leave the selected values in place and verify them, or restore the recorded pre-Apply state and clearly report any incomplete recovery.</p>
+  <div class="callout"><strong>Scope:</strong> file adapters may write only explicitly registered user-level targets under the user's home directory. Omarchy appearance adapters may call documented Omarchy commands, including commands that request administrator authorization, but must not edit package-owned files directly. Every adapter must disclose whether Undo restores exact snapshots or semantically re-applies a prior selection; it must not claim stronger reversibility than its readback supports.</div>
 
   <h2>Transaction sequence</h2>
   <ol>
-    <li><strong>Validate.</strong> Validate the draft against <code>settings.schema.json</code>, confirm every selected ID exists in the current catalog, and check adapter preconditions. Automatic theme mode requires both theme IDs, coordinates from Omarchy weather settings, and a resolvable system IANA time zone. A selected boot unlock design must exist in the reviewed unlock catalog and requires a reversible Plymouth adapter.</li>
+    <li><strong>Validate.</strong> Validate the draft against <code>settings.schema.json</code>, confirm every selected ID exists in the current catalog, and check adapter preconditions. Automatic theme mode requires both theme IDs, coordinates from Omarchy weather settings, and a resolvable system IANA time zone. A selected boot unlock design must exist in the current selectable catalog and have a documented Omarchy Apply, readback, and restore path.</li>
     <li><strong>Acquire the transaction lock.</strong> Allow one apply or rollback at a time. Before starting a new Apply, restore every interrupted transaction under this lock. If recovery fails, stop and preserve its journal and snapshots.</li>
     <li><strong>Snapshot exact targets.</strong> Record every file or supported API value an adapter may change before making any change. For regular user-owned files, preserve bytes, POSIX mode bits, and whether the file existed. Reject symlinks and paths outside the registered target list. Store snapshots in a private transaction directory with mode <code>0700</code>; files use mode <code>0600</code>.</li>
-    <li><strong>Write a durable journal.</strong> Record transaction ID, previous canonical settings, proposed settings, target list, snapshot hashes, and phase. Flush the journal before the first target mutation.</li>
+    <li><strong>Write a durable journal.</strong> Record transaction ID, target list, snapshot hashes, and phase. When canonical settings are part of the operation, also record their previous and proposed values. Flush the journal before the first target mutation.</li>
     <li><strong>Apply in a fixed order.</strong> Before each adapter runs, mark its target as in progress and flush the journal. Adapters must be idempotent, bounded to their declared targets, and expose a readback check.</li>
     <li><strong>Verify readback.</strong> Read every changed target and verify the intended state. A successful process exit alone is not proof of application.</li>
-    <li><strong>Commit canonical settings.</strong> Write the new settings file through a temporary file in the same directory, flush it, then atomically rename it into place. Mark the journal committed only after the settings file and all adapter readbacks agree.</li>
+    <li><strong>Commit.</strong> When canonical settings are included, write the new settings file through a temporary file in the same directory, flush it, then atomically rename it into place. Mark the journal committed only after all requested readbacks agree.</li>
   </ol>
 
   <h2>Atomic file writes</h2>
@@ -63,7 +63,7 @@
       <tr><td>Adapter write or verification failure</td><td>Stop applying new targets. Restore changed targets in reverse order from the pre-Apply snapshots, then restore the previous canonical settings. Verify each restoration and report any target that could not be restored.</td></tr>
       <tr><td>Process or machine interruption before commit</td><td>On controller startup, detect the prepared/in-progress journal and roll back from its snapshots before accepting another Apply.</td></tr>
       <tr><td>Rollback failure</td><td>Keep the journal and snapshots intact, mark recovery required, show the affected targets, and block further Apply operations until recovery is completed.</td></tr>
-      <tr><td>Target is not fully reversible</td><td>Do not include it in Apply. Treat it as an implementation blocker; do not downgrade it to a silent exception.</td></tr>
+      <tr><td>Target has semantic rather than exact rollback</td><td>Document the side effects and readback limits beside the action. Do not describe it as exact restoration or hide that limitation.</td></tr>
     </tbody>
   </table>
 
@@ -84,10 +84,14 @@
     <li>The controller can recover an interrupted transaction before starting new work.</li>
     <li>Apply failure and rollback failure are visible and leave durable recovery information.</li>
     <li>The settings file is never committed while any adapter target is unverified.</li>
-    <li>No adapter writes outside its allowlist or into package-owned Omarchy files.</li>
+    <li>File adapters stay inside their target allowlist. Omarchy adapters use supported commands and never write package-owned files directly.</li>
   </ol>
 
-  <p class="good">Current implementation state: the transaction core is in <code>transaction.py</code>. Before a new Apply, it recovers interrupted transactions under the transaction lock and records recovered transaction IDs in the new journal. The controller also exposes explicit status, recovery, and rollback commands. Its application target allowlist is empty, so no application configuration can be written yet. A user-facing rollback control still needs integration before the Apply UI is exposed. No adapter is enabled.</p>
+  <h2>Omarchy appearance actions</h2>
+  <p>The theme, background, and unlock controls use <code>appearance_actions.py</code>, a separate journaled action layer. It validates the current selectable catalog, records the prior detected selection, applies through Omarchy's supported commands, and reads the selected state back. Undo checks that the current state still matches the action's recorded result before restoring the prior selection. Interrupted actions are recovered before another appearance action runs.</p>
+  <p class="callout"><strong>Rollback scope:</strong> background Undo restores the previously resolved wallpaper path. Theme Undo re-runs Omarchy's theme setter for the previous theme. This restores the selected theme and reruns its normal hooks, but cannot reverse arbitrary side effects from custom hooks. Unlock Undo uses Omarchy's Plymouth reset or theme setter, which updates system Plymouth/SDDM assets and rebuilds initramfs. The journal verifies Omarchy's reported installed Plymouth artwork; it does not inspect the next-boot initramfs image or preserve exact prior system-file bytes. These are semantic compensations rather than exact file-snapshot rollback.</p>
+  <p>Theme selection in Automatic mode applies the solar phase at the time Apply is pressed. There is no persistent scheduler for future sunrise or sunset transitions. Theme and unlock actions may invoke Omarchy commands that request administrative authorization; the plugin does not edit package-owned files directly.</p>
+  <p class="good">Current implementation state: <code>transaction.py</code> provides reversible user-file transactions for supported font adapters. <code>appearance_actions.py</code> provides separately journaled Omarchy Apply, readback, recovery, and Undo actions for themes, backgrounds, and unlock designs. The system-wide font adapter, icon-theme adapter, and persistent automatic theme scheduler are not enabled.</p>
   <footer>Project: Omarchy Look &amp; Feel. This specification complements <code>settings.schema.json</code> and the approved owner requirements in <code>DESIGN_BRIEF.md</code>.</footer>
 </main>
 </body>

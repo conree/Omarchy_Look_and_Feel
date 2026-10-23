@@ -42,8 +42,8 @@
     <h1>Application support matrix</h1>
     <div class="subtitle">Read-only audit of appearance control points for the agreed first-priority applications</div>
     <div class="meta">
-      <strong>Status</strong><span>Font authority inventory expanded; no adapters implemented and no application appearance changed</span>
-      <strong>Evidence date</strong><span>22 October 2026</span>
+      <strong>Status</strong><span>Best-effort installation-source census; Ghostty and Betterbird have reversible app-specific font adapters</span>
+      <strong>Evidence date</strong><span>23 October 2026</span>
       <strong>Machine</strong><span>Omarchy 4.0.6-1 · Arch Linux package set</span>
       <strong>Authority</strong><span>Owner-approved Look and Feel settings must win for every supported target</span>
     </div>
@@ -57,32 +57,32 @@
     <tbody>
       <tr>
         <td><strong>PCManFM</strong><br>1.4.0-2</td>
-        <td>Links to GTK 3 (<code>libgtk-3.so.0</code>). Its own <code>~/.config/pcmanfm/default/pcmanfm.conf</code> controls file-view behavior, not font or theme. The GTK 3 <code>settings.ini</code> still specifies Visby CF 14, Dracula-Van-Helsing, and Tela-circle Dracula icons.</td>
+        <td>Links to GTK 3 (<code>libgtk-3.so.0</code>). Its own <code>~/.config/pcmanfm/default/pcmanfm.conf</code> controls file-view behavior, not font or theme. Both GTK settings files specify Aileron 12; active GSettings still reports Aileron 14, so font sources conflict.</td>
         <td><span class="status inherited">Inherited GTK 3 controls found.</span> The separate Shell Font plugin only styles Omarchy’s Quickshell UI, so it does not change PCManFM. Look_and_Feel needs a GTK 3 settings adapter for the system font and must verify the running file manager after relaunch.</td>
       </tr>
       <tr>
         <td><strong>Alacritty</strong><br>0.17.0-1</td>
-        <td><code>~/.config/alacritty/alacritty.toml</code> imports the active Omarchy theme; user config sets Comic Code Ligatures at 9 pt.</td>
+        <td><code>~/.config/alacritty/alacritty.toml</code> imports the active Omarchy theme; user config sets Office Code Pro at 12 pt.</td>
         <td><span class="status direct">Direct config found.</span> Verify live reload and visible size after the central value is reasserted following Omarchy theme/font/size commands.</td>
       </tr>
       <tr>
         <td><strong>Foot</strong><br>1.28.0-2</td>
-        <td><code>~/.config/foot/foot.ini</code> sets Comic Code Ligatures at 9 pt and imports theme files. Omarchy’s text-size script notes that a running Foot keeps its startup size and asks for a restart; new windows read the changed config.</td>
+        <td><code>~/.config/foot/foot.ini</code> sets Office Code Pro at 12 pt and imports theme files. Omarchy’s text-size script notes that a running Foot keeps its startup size and asks for a restart; new windows read the changed config.</td>
         <td><span class="status direct">Direct config found.</span> Confirm the effective include order, live-window behavior, and visible size; preserve unrelated terminal settings when applying.</td>
       </tr>
       <tr>
         <td><strong>Ghostty</strong><br>1.3.1-3</td>
-        <td><code>~/.config/ghostty/config</code> imports current Omarchy colors; user config sets Comic Code Ligatures at 12 pt.</td>
-        <td><span class="status direct">Direct config found.</span> Verify reassertion and live reload/restart behavior after Omarchy commands.</td>
+        <td><code>~/.config/ghostty/config</code> imports current Omarchy colors. The plugin now adds a managed font overlay after existing imports and stores the selected family in its own preference file; current resolved family is Office Code Pro at 12 pt.</td>
+        <td><span class="status direct">Reversible adapter implemented.</span> The effective config and disposable-home Apply/Undo path were verified. Confirm open-window reload behavior and reassertion after Omarchy font commands before claiming ongoing enforcement.</td>
       </tr>
       <tr>
         <td><strong>Kitty</strong><br>0.49.2-1</td>
-        <td><code>~/.config/kitty/kitty.conf</code> imports current Omarchy theme; user config sets Comic Code Ligatures at 9 pt.</td>
+        <td><code>~/.config/kitty/kitty.conf</code> imports current Omarchy theme; user config sets Office Code Pro at 12 pt.</td>
         <td><span class="status direct">Direct config found.</span> Verify reload signal and visible size after central apply and after theme/font/size changes.</td>
       </tr>
       <tr>
         <td><strong>WezTerm</strong><br>20240203.110809.r898.gfe3006a-1</td>
-        <td><code>~/.config/wezterm/wezterm.lua</code> sets Comic Code Ligatures at 12 pt and defines its own Dracula palette. No Omarchy theme include is present in this config.</td>
+        <td><code>~/.config/wezterm/wezterm.lua</code> sets Office Code Pro at 12 pt and defines its own Dracula palette. No Omarchy theme include is present in this config.</td>
         <td><span class="status direct">Direct config found.</span> Its independent palette and font config need an adapter. The inspected Omarchy font/size scripts do not contain a WezTerm target. Confirm config reload and rendered metrics.</td>
       </tr>
       <tr>
@@ -108,13 +108,52 @@
     </tbody>
   </table>
 
+  <h2>Installed application and shell font census</h2>
+  <p>Opening the plugin scans effective XDG desktop entries, pacman installed and foreign package records, Flatpak/Snap applications, common AppImage locations, web-app launchers, a curated set of CLI/TUI tools, and active Quickshell bar widgets. It writes a private machine record to <code>~/.local/state/omarchy-look-and-feel/font-application-inventory.json</code>. Toolkit inference uses desktop metadata plus static executable dependencies where available. Unknown or unverified font controls remain marked for review. Manual Application Lookup performs a separate targeted search without changing the startup census. This coverage is best effort, not a promise to discover every Linux app or override every private, sandboxed, bundled, or hard-coded font setting.</p>
+  <table>
+    <thead><tr><th>Inventory group</th><th>Current finding</th><th>Font control surface</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>Desktop launchers</strong></td>
+        <td>The current scan finds 121 visible launchers and 65 hidden/no-display entries, with dynamic package source counts recorded separately. The exact counts change as software is installed or removed.</td>
+        <td>GTK, Qt, Chromium, Electron, terminal, known app-specific, and unidentified toolkit classes carry distinct status labels. Launcher display names and executable names are both retained so manual searches can match either.</td>
+      </tr>
+      <tr>
+        <td><strong>CLI and terminal UI apps</strong></td>
+        <td>Four additional installed TUIs without a desktop launcher were found: btop, Yazi, tmux, and OpenCode TUI. Neovim has a desktop launcher; Vim, nano, Emacs TUI, Helix, and Micro are recorded only if their commands are installed.</td>
+        <td>These programs draw glyphs through the host terminal. The terminal emulator owns their visible monospace family and size. Neovim's active TUI config contains no GUI font; GUI frontends are a separate target.</td>
+      </tr>
+      <tr>
+        <td><strong>Source editors and Markdown</strong></td>
+        <td>Cursor, Typora, Obsidian, and Neovim are recorded separately. Cursor's editor and integrated terminal use Office Code Pro. Typora's user CSS override assigns Office Code Pro across the writing canvas. Obsidian's active vault was not identified.</td>
+        <td>Cursor has separate editor and integrated-terminal font settings. Typora loads <code>base.user.css</code> after the active theme, so its override keeps theme files intact and assigns the user's monospace choice to the complete Markdown writing canvas. Obsidian exposes interface, text, and monospace font roles per vault, with CSS snippets and themes able to override them. Neovim TUI inherits the host terminal.</td>
+      </tr>
+      <tr>
+        <td><strong>Mail clients</strong></td>
+        <td>Betterbird is installed and its selected Gecko profile resolves through <code>~/.thunderbird/profiles.ini</code>. Thunderbird, Evolution, and Geary are catalogued as known app types and marked not installed on this machine.</td>
+        <td>Betterbird's General sans-serif default and HTML composition font map to Gecko profile preferences and are updated by the system-font mail adapter. Evolution and Geary use GTK system-font/Fontconfig surfaces. Each profile edit is journaled and reversible; close Betterbird during Apply and restart it afterward.</td>
+      </tr>
+      <tr>
+        <td><strong>OBS Studio</strong></td>
+        <td>Installed OBS 32.2.2 links Qt 6. Its local <code>user.ini</code> records <code>[Appearance] FontScale=10</code>; no family preference was found there. The Appearance page shown exposes Theme, Style, Font Size, and Density, with no font-family field.</td>
+        <td>The family is supplied through Qt's active application/platform font integration, separately from OBS's font-size control. The local Hyprland config does not currently establish that qt6ct is active, so whether the configured Qt 6 general font reaches OBS remains to be confirmed at runtime.</td>
+      </tr>
+      <tr>
+        <td><strong>Quickshell bar and widgets</strong></td>
+        <td>The active Omarchy shell is Quickshell with 22 bar widget IDs. Walker and Waybar are not installed. The active Shell Font plugin reads <code>~/.config/omarchy/shell-font.json</code>; the font trial changed its family to Aileron through <code>Style.fontFamily</code>. Active user plugin QML files are scanned for explicit font family and size bindings.</td>
+        <td>The bar font is a separate shell-wide surface. Widgets that use <code>bar.fontFamily</code> or <code>Style.font.family</code> inherit the Shell Font selection; a widget with its own QML family or size is a separate target. Walker, if installed later, uses GTK 4 CSS themes and XML layouts, including font styling.</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="callout"><strong>Coverage status:</strong> the census checks common installation sources and marks unresolved surfaces rather than claiming exhaustive discovery. Terminal-font application currently reaches Ghostty. The system-font mail action updates Betterbird; GTK mail clients inherit the GTK setting sources. Other app-specific settings and runtime proofs remain scoped by their recorded review status.</div>
+
   <h2>Shared control layers and conflicts</h2>
   <table>
     <thead><tr><th>Layer</th><th>Local evidence</th><th>Effect on the design</th></tr></thead>
     <tbody>
       <tr>
         <td><strong>GTK 3 and GTK 4</strong></td>
-        <td><code>~/.config/gtk-3.0/settings.ini</code> sets Visby CF 14; <code>~/.config/gtk-4.0/settings.ini</code> sets Visby CF Medium 14. The GSettings probe returned <code>font-name=Visby CF Medium 14</code>, <code>document-font-name=Avenir Next 12</code>, <code>monospace-font-name=Comic Code Ligatures 11</code>, and <code>text-scaling-factor=1.0</code>, but warned that its dconf runtime path is unavailable in this inspection environment. GTK theme/icon preferences are separate. Fish exports <code>GTK_THEME=Dracula-Van-Helsing</code>. PCManFM is GTK 3.</td>
+        <td>Both GTK settings files now specify <code>Aileron 12</code>. Active GSettings reports <code>font-name=Aileron 14</code>, <code>document-font-name=Avenir Next 12</code>, and <code>monospace-font-name=Office Code Pro 11</code>, so GTK apps may still inherit a conflicting size. GTK theme/icon preferences are separate. Fish exports <code>GTK_THEME=Dracula-Van-Helsing</code>. PCManFM and Xarchiver link GTK 3.</td>
         <td>GTK settings files and GSettings/dconf are distinct inputs and can disagree; the selected GTK generation and runtime settings backend must be verified per app. A system-font adapter must account for both GTK generations and decide explicitly whether the separate document and monospace defaults follow the system selection. The Shell Font plugin does not update either GTK source. GTK CSS/theme rules and environment overrides also need checking.</td>
       </tr>
       <tr>
@@ -124,12 +163,12 @@
       </tr>
       <tr>
         <td><strong>Fontconfig</strong></td>
-        <td><code>~/.config/fontconfig/fonts.conf</code> prepends Comic Code Ligatures for the generic <code>monospace</code> family. Rules in <code>conf.d</code> alias Visby to Visby CF, define preferred sans/serif/monospace fallback chains, and set font scale 1.5 and DPI 75.</td>
+        <td><code>~/.config/fontconfig/fonts.conf</code> prepends Office Code Pro for generic <code>monospace</code>. Separate <code>conf.d</code> rules still alias Visby to Visby CF and set display properties.</td>
         <td>Fontconfig affects family matching and rendered metrics for applications that request generic families; it does not set GTK's widget font name. Omarchy's <code>omarchy-font-set</code> rewrites the monospace alias, and Font Manager owns some display-property rules. Preserve and reconcile these rules without replacing unrelated configuration.</td>
       </tr>
       <tr>
         <td><strong>Qt 5/6</strong></td>
-        <td><code>qt5ct.conf</code> and <code>qt6ct.conf</code> define Avenir Next 12 general, Comic Code Ligatures 12 fixed, and a custom Dracula palette. The active Hyprland config search did not find <code>QT_QPA_PLATFORMTHEME=qt5ct/qt6ct</code>; archived configs do contain it.</td>
+        <td><code>qt5ct.conf</code> and <code>qt6ct.conf</code> now define Aileron 12 general and Office Code Pro 12 fixed, with a custom Dracula palette. Whether qt6ct is active for a given app still requires per-process verification.</td>
         <td>These files show competing values, but their current reach in this session is not established. Confirm the live Qt platform-theme environment and test representative Qt apps before making qt5ct/qt6ct an authority adapter.</td>
       </tr>
       <tr>
@@ -139,7 +178,7 @@
       </tr>
       <tr>
         <td><strong>Omarchy Shell Font plugin</strong></td>
-        <td><code>skuthus.shell-font</code> is listed in <code>~/.config/omarchy/shell.json</code>. Its active selection is Avenir Next Regular. The plugin loads a generated face and sets Quickshell’s <code>Style.fontFamily</code>; its code does not write GTK settings. The GTK 3 font remains Visby CF 14.</td>
+        <td><code>skuthus.shell-font</code> is listed in <code>~/.config/omarchy/shell.json</code>. Its active selection is Aileron. The plugin loads a generated face and sets Quickshell’s <code>Style.fontFamily</code>; its code does not write GTK settings. GTK INI files specify Aileron 12 while active GSettings reports Aileron 14.</td>
         <td>This plugin only controls Omarchy’s Quickshell bar and shell UI. It neither promises nor applies a desktop-wide system font. Look_and_Feel must implement its own GTK 3/4 adapters; its current prototype is read-only and does not yet apply any settings.</td>
       </tr>
       <tr>
@@ -171,6 +210,11 @@
     <li><a href="https://helpcenter.onlyoffice.com/desktop/getting-started.aspx">ONLYOFFICE Desktop Editors settings</a> — interface theme and scaling controls.</li>
     <li><a href="https://api.onlyoffice.com/docs/desktop-editors/usage-api/customizing-themes">ONLYOFFICE custom interface themes</a>.</li>
     <li><a href="https://www.chromium.org/administrators/">Chromium policy administration</a> — managed policy mechanism.</li>
+    <li><a href="https://code.visualstudio.com/docs/editing/getting-started/tips-and-tricks">VS Code settings</a> and <a href="https://code.visualstudio.com/docs/terminal/appearance">integrated terminal appearance</a> — separate editor and terminal font settings.</li>
+    <li><a href="https://support.typora.io/Custom-Font/">Typora custom fonts</a> and <a href="https://support.typora.io/Add-Custom-CSS/">custom CSS order</a> — body, source-mode, and code-block font control.</li>
+    <li><a href="https://neovim.io/doc/user/tui/">Neovim TUI</a> — terminal UI behavior; TUI glyphs are drawn by the host terminal.</li>
+    <li><a href="https://walkerlauncher.com/docs/theming">Walker theming</a> — GTK 4 CSS themes and XML layouts.</li>
+    <li><a href="https://doc.qt.io/qt-6/qfont.html">Qt QFont</a> — application and widget font selection.</li>
   </ul>
 
   <footer>Local evidence includes installed package records, the listed user configuration files, <code>/usr/bin/omarchy-theme-set</code>, <code>/usr/bin/omarchy-font-set</code>, and <code>/usr/bin/omarchy-display-text-size</code>. This matrix records discovery, not acceptance testing. Companion project plan: <code>/home/si/Projects/Omarchy_Look_and_Feel.html</code>.</footer>
