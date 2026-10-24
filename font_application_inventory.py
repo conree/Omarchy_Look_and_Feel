@@ -34,8 +34,11 @@ ADDITIONAL_APPLICATION_DIRS = (
 TERMINALS = {
     "Alacritty.desktop": ("Alacritty", "~/.config/alacritty/alacritty.toml"),
     "foot.desktop": ("Foot", "~/.config/foot/foot.ini"),
+    "footclient.desktop": ("Foot", "~/.config/foot/foot.ini"),
+    "foot-server.desktop": ("Foot", "~/.config/foot/foot.ini"),
     "com.mitchellh.ghostty.desktop": ("Ghostty", "~/.config/ghostty/config"),
     "kitty.desktop": ("Kitty", "~/.config/kitty/kitty.conf"),
+    "kitty-open.desktop": ("Kitty", "~/.config/kitty/kitty.conf"),
     "org.wezfurlong.wezterm.desktop": ("WezTerm", "~/.config/wezterm/wezterm.lua"),
 }
 

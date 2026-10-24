@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Omarchy Look &amp; Feel handoff — 21 October 2026</title>
+  <style>
+    :root { color-scheme: light; --page:#f5f5f5; --paper:#fcfcfc; --panel:#f7f7fb; --ink:#1f1f1f; --muted:#4b4b56; --comment:#635d97; --rule:#cfcfde; --purple:#644ac9; --green:#14710a; --orange:#a34d14; }
+    * { box-sizing:border-box; }
+    body { margin:0; padding:24px; background:var(--page); color:var(--ink); font:12pt/1.5 "Visby CF"; }
+    main { max-width:1000px; margin:0 auto; padding:30px 36px; background:var(--paper); border:1px solid var(--rule); }
+    h1 { margin:0 0 6px; font-size:20pt; line-height:1.15; font-weight:600; }
+    h2 { margin:25px 0 8px; padding-bottom:5px; border-bottom:1px solid var(--rule); font-size:14.5pt; font-weight:600; }
+    h3 { margin:16px 0 5px; color:var(--comment); font-size:12.5pt; font-weight:600; }
+    p { margin:7px 0 10px; }
+    .meta { margin:18px 0 22px; padding:12px 15px; background:var(--panel); border:1px solid var(--rule); }
+    .status { padding:12px 14px; background:#eef5eb; border-left:4px solid var(--green); }
+    .blocked { padding:12px 14px; background:#fbf3ec; border-left:4px solid var(--orange); }
+    table { width:100%; margin:10px 0 15px; border-collapse:collapse; font-size:10.5pt; }
+    th, td { padding:7px 9px; border:1px solid var(--rule); text-align:left; vertical-align:top; }
+    th { background:var(--panel); font-weight:600; }
+    ul, ol { margin:7px 0 12px; padding-left:23px; }
+    li { margin:4px 0; }
+    code, a { color:var(--purple); overflow-wrap:anywhere; }
+    a { text-decoration:underline; text-underline-offset:2px; }
+    footer { margin-top:28px; padding-top:9px; border-top:1px solid var(--rule); color:var(--muted); font-size:9pt; }
+    @media print { body { padding:0; background:#fff; } main { max-width:none; padding:0; border:0; } h2, h3 { break-after:avoid; } table, .status, .blocked { break-inside:avoid; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Omarchy Look &amp; Feel project handoff</h1>
+  <p>Current implementation, verification, and next actions.</p>
+  <div class="meta">
+    <strong>Date:</strong> 21 October 2026<br>
+    <strong>Project:</strong> <code>/home/si/Projects/Omarchy_Plugins/Look_and_Feel/</code><br>
+    <strong>Local Git commit:</strong> <code>c2a1a44</code> — Initialize Omarchy Look and Feel prototype<br>
+    <strong>Branch:</strong> <code>main</code>; no remote configured and no push performed.
+  </div>
+
+  <div class="status"><strong>Current status:</strong> read-only appearance prototype. The bar panel inventories apps and catalogs and exposes transaction status, recovery, and rollback. Apply is disabled because no reviewed application adapter is registered. No application appearance settings have been changed and the plugin is not installed/enabled in the live bar.</div>
+
+  <h2>Implemented</h2>
+  <ul>
+    <li>Canonical settings schema and unselected example cover separate system/terminal typography, Light/Dark themes, automatic mode, independent background and icons, and manual schedule coordinates/offsets.</li>
+    <li><code>transaction.py</code> implements journaled file changes, rollback, recovery before a new Apply, and status reporting. Its application target allowlist is intentionally empty.</li>
+    <li>The QML panel shows transaction status, recovery IDs/errors, recovery and rollback actions, and a disabled Apply state while adapters are unavailable.</li>
+    <li><code>controller.py</code> discovers priority applications and font/theme/background/icon catalogs. Catalog IDs are deterministic. The catalog eligibility gate requires verified provenance, a license and evidence reference, and theme compatibility review.</li>
+    <li>Current inventory audit: 616 records total — 31 themes, 364 font families, 74 icon themes, and 147 backgrounds. Zero are selectable; available metadata does not establish adequate license/provenance evidence.</li>
+    <li><code>solar_schedule.py</code> calculates apparent sunrise/sunset offline and selects the next Light/Dark transition using coordinates, an IANA time zone, and independent event offsets. It does not run persistently or apply themes.</li>
+  </ul>
+
+  <h2>Independent checks completed</h2>
+  <ul>
+    <li><code>qmllint Panel.qml</code> completed without diagnostics.</li>
+    <li>All 616 inventory records validated against <code>catalog-entry.schema.json</code>; the schema rejected a record marked selectable without review evidence.</li>
+    <li>Python AST parsing and HTML parsing completed for the changed source/document artifacts.</li>
+    <li>Solar outputs for three 2026 New York dates were compared against NOAA's published table; the rounded times were within two minutes. This is an approximate calculator, not a live scheduler.</li>
+  </ul>
+
+  <h2>Next work</h2>
+  <ol>
+    <li>Choose initial font/theme/background/icon entries and verify each item's provenance, license, and compatibility before making it selectable.</li>
+    <li>Implement the first narrowly scoped application adapter and validate apply/readback/restore in a disposable home. Register its exact target only after that review.</li>
+    <li>After a theme adapter and eligible Light/Dark themes exist, implement the persistent scheduler and route transitions through the transaction core.</li>
+    <li>Build selection, preview, and Apply controls in the panel only when the preceding paths are safe and usable.</li>
+  </ol>
+
+  <div class="blocked"><strong>GitHub push blocked by missing destination:</strong> this project directory had no Git repository. A local repository was initialized and the 13 source files were committed as <code>c2a1a44</code>. The connected GitHub account has the separate <code>conree/omarchy-ee-calc</code> repository, which is not this project. No matching Look &amp; Feel repository or remote was found, so pushing there would be a guess and risk publishing into the wrong repository. Set the intended remote URL before pushing.</div>
+
+  <h2>Key project files</h2>
+  <ul>
+    <li><code>/home/si/Projects/Omarchy_Plugins/Look_and_Feel/DESIGN_BRIEF.md</code></li>
+    <li><code>/home/si/Projects/Omarchy_Plugins/Look_and_Feel/README.md</code></li>
+    <li><code>/home/si/Projects/Omarchy_Plugins/Look_and_Feel/APPLY_TRANSACTION.html</code></li>
+    <li><code>/home/si/Projects/Omarchy_Plugins/Look_and_Feel/APPLICATION_SUPPORT_MATRIX.html</code></li>
+    <li><code>/home/si/Projects/Omarchy_Look_and_Feel.html</code></li>
+  </ul>
+  <footer>Prepared as a project handoff in Visby CF using the Alucard light document palette. No remote repository changes were made.</footer>
+</main>
+</body>
+</html>

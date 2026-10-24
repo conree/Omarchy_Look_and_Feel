@@ -13,13 +13,14 @@ import sys
 from urllib.parse import urlparse
 from pathlib import Path
 
-from font_application_inventory import installed_font_applications, persist_font_application_inventory, shell_font_surfaces
+from font_application_inventory import TERMINALS, installed_font_applications, persist_font_application_inventory, shell_font_surfaces
 from appearance_audit import audit_appearance
 from appearance_audit import _theme_mode_expected
 from appearance_actions import action_status, apply_action, rollback_action
-from mail_font_adapters import betterbird_font_target
+from global_font_actions import TERMINAL_COMMANDS, build_global_font_targets
 from manual_app_inspector import inspect_app
-from transaction import FILE_TARGETS, TransactionError, apply_file_targets, recover_pending, rollback_latest, transaction_status
+from manual_app_registry import clear_registry as clear_manual_app_registry, register_audit_result, registry_status, validated_apply_status
+from transaction import TransactionError, apply_file_targets, has_committed_transaction, recover_pending, rollback_latest, transaction_status
 
 
 HOME = Path.home()
@@ -304,24 +305,32 @@ def background_entries() -> list[dict[str, object]]:
     return entries
 
 
-def font_families() -> list[str]:
+def font_family_spacing() -> dict[str, set[str]]:
+    """Collect installed faces' spacing metadata for each family and alias."""
     if not shutil.which("fc-list"):
-        return []
+        return {}
     try:
         result = subprocess.run(
-            ["fc-list", "--format", "%{family}\n"],
+            ["fc-list", "--format", "%{family}\t%{spacing}\n"],
             check=True,
             capture_output=True,
             text=True,
             timeout=8,
         )
     except (OSError, subprocess.SubprocessError):
-        return []
-    names = set()
+        return {}
+    families: dict[str, set[str]] = {}
     for line in result.stdout.splitlines():
+        family, _, spacing = line.partition("\t")
         # Fontconfig can return aliases separated by commas.
-        names.update(part.strip() for part in line.split(",") if part.strip())
-    return sorted(names, key=str.casefold)
+        for name in (part.strip() for part in family.split(",")):
+            if name:
+                families.setdefault(name, set()).update(value.strip() for value in spacing.split(","))
+    return families
+
+
+def font_families() -> list[str]:
+    return sorted(font_family_spacing(), key=str.casefold)
 
 
 def font_entries() -> list[dict[str, object]]:
@@ -337,15 +346,20 @@ def font_entries() -> list[dict[str, object]]:
         pass
 
     entries = []
-    for name in font_families():
+    spacing_by_family = font_family_spacing()
+    for name in sorted(spacing_by_family, key=str.casefold):
+        # FC_MONO=100 and FC_CHARCELL=110 both use fixed character widths.
+        # Unknown or mixed spacing is not a positive monospace classification.
+        monospace = spacing_by_family[name] <= {"100", "110"}
         entry = reviewed.get(name)
         if entry is not None:
             # Curated metadata applies only to the exact family currently
             # reported by fontconfig; discovery alone never grants review.
-            entries.append({**entry, "id": stable_id("font", name), "kind": "font", "selectable": False})
+            entries.append({**entry, "id": stable_id("font", name), "kind": "font", "monospace": monospace, "selectable": False})
         else:
             entries.append({
                 "id": stable_id("font", name), "kind": "font", "name": name,
+                "monospace": monospace,
                 "source": "fontconfig; package/source not yet verified", "license": None,
                 "review": "needs-provenance-and-license-review", "licenseEvidence": None,
                 "provenanceVerified": False,
@@ -395,8 +409,37 @@ def automatic_schedule_context() -> dict[str, object]:
     return result
 
 
+def _global_font_selection() -> dict[str, object]:
+    xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", str(HOME / ".config")))
+    if not xdg_config.is_absolute():
+        xdg_config = HOME / ".config"
+    try:
+        xdg_config.relative_to(HOME)
+    except ValueError:
+        return {}
+    path = xdg_config / "omarchy-look-and-feel/font-selection.json"
+    if not path.is_file() or path.is_symlink():
+        return {}
+    try:
+        saved = json.loads(path.read_text(encoding="utf-8"))
+        return saved if isinstance(saved, dict) and saved.get("schemaVersion") == 1 else {}
+    except (OSError, ValueError, json.JSONDecodeError):
+        return {}
+
+
+def _selected_global_font_id(font_records: list[dict[str, object]], key: str) -> str | None:
+    family = _global_font_selection().get(key)
+    names = {str(item["name"]) for item in font_records}
+    return stable_id("font", family) if isinstance(family, str) and family in names else None
+
+
+def _selected_global_font_size(key: str) -> int | None:
+    size = _global_font_selection().get(key)
+    return size if isinstance(size, int) and not isinstance(size, bool) and 6 <= size <= 48 else None
+
+
 def selected_terminal_font(font_records: list[dict[str, object]]) -> str | None:
-    """Read the saved dropdown choice, falling back to the managed Ghostty font."""
+    """Read the global saved choice, falling back to the legacy managed value."""
     xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", str(HOME / ".config")))
     if not xdg_config.is_absolute():
         xdg_config = HOME / ".config"
@@ -405,6 +448,9 @@ def selected_terminal_font(font_records: list[dict[str, object]]) -> str | None:
     except ValueError:
         return None
     by_name = {str(item["name"]): str(item["id"]) for item in font_records}
+    saved_family = _global_font_selection().get("terminalFontFamily")
+    if isinstance(saved_family, str) and saved_family in by_name:
+        return stable_id("font", saved_family)
     preference_path = xdg_config / "ghostty/look-and-feel-font-selection.json"
     if preference_path.is_file() and not preference_path.is_symlink():
         try:
@@ -434,6 +480,9 @@ def selected_terminal_font_size() -> int | None:
     xdg_config = Path(os.environ.get("XDG_CONFIG_HOME", str(HOME / ".config")))
     if not xdg_config.is_absolute():
         xdg_config = HOME / ".config"
+    global_size = _selected_global_font_size("terminalFontSizePt")
+    if global_size is not None:
+        return global_size
     path = xdg_config / "ghostty/look-and-feel-font-selection.json"
     if not path.is_file() or path.is_symlink():
         return None
@@ -473,9 +522,12 @@ def inventory() -> dict[str, object]:
         "font_application_inventory_record": font_application_record_path,
         "font_application_inventory_record_error": font_application_record_error,
         "preferences": {
+            "systemFontId": _selected_global_font_id(fonts, "systemFontFamily"),
+            "systemFontSizePt": _selected_global_font_size("systemFontSizePt"),
             "terminalFontId": selected_terminal_font(fonts),
             "terminalFontSizePt": selected_terminal_font_size(),
         },
+        "global_font_undo_available": has_committed_transaction(label="Global font settings"),
         "applications": application_inventory(),
         "catalogs": {
             "themes": themes(),
@@ -521,9 +573,11 @@ def apply_selected_theme(mode: str, light_name: str, dark_name: str) -> dict[str
     if not selected:
         raise TransactionError(reason)
     target = selected.casefold().replace(" ", "-")
+    manual_theme_unsupported = registry_status()["themeUnsupportedCount"]
     result = apply_action("theme", target, available)
     result["selectionReason"] = reason
     result["automaticFutureSwitching"] = "not-scheduled"
+    result["manualThemeUnsupportedCount"] = manual_theme_unsupported
     return result
 
 
@@ -588,7 +642,64 @@ def ghostty_font_target(font_id: str, font_name: str, font_size: int = 12) -> di
     }
 
 
+def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: str, terminal_size: int) -> dict[str, object]:
+    fonts = {str(entry["id"]): str(entry["name"]) for entry in font_entries()}
+    system_family = fonts.get(system_font_id)
+    terminal_family = fonts.get(terminal_font_id)
+    if not system_family or not terminal_family:
+        raise TransactionError("a selected font is no longer available")
+    census = installed_font_applications()
+    terminal_apps = [app for app in census.get("desktopApplications", []) if isinstance(app, dict)
+                     and str(app.get("framework", "")).casefold() == "terminal-emulator"]
+    terminal_ids = {str(app.get("id", "")) for app in terminal_apps}
+    for app_id in terminal_ids:
+        adapter = TERMINAL_COMMANDS.get(app_id)
+        if app_id not in TERMINALS or adapter is None:
+            raise TransactionError("an installed terminal needs a reviewed font adapter before global Apply")
+        if not shutil.which(adapter[0]):
+            raise TransactionError("an installed terminal could not be matched to its font adapter executable")
+    targets, terminal_count = build_global_font_targets(system_family, system_size, terminal_family, terminal_size, terminal_ids)
+    manual = validated_apply_status(set(targets))
+    if manual["unsupportedCount"]:
+        return {
+            "blocked": True,
+            "unsupportedManualCount": manual["unsupportedCount"],
+            "registeredManualCount": manual["registeredCount"],
+        }
+    transaction_id = apply_file_targets(targets, label="Global font settings")
+    return {
+        "transaction": transaction_id,
+        "targetCount": len(targets),
+        "terminalCount": terminal_count,
+        "registeredManualCount": manual["registeredCount"],
+        "unsupportedManualCount": 0,
+    }
+
+
+def audit_manual_app(query: str) -> dict[str, object]:
+    result = inspect_app(query)
+    return register_audit_result(query, result)
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) == 5 and argv[0] == "apply-global-fonts":
+        try:
+            result = apply_global_fonts(argv[1], int(argv[2]), argv[3], int(argv[4]))
+        except (TransactionError, ValueError, OSError) as exc:
+            print(f"Global font Apply failed: {exc}", file=sys.stderr)
+            return 1
+        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
+        sys.stdout.write("\n")
+        return 0
+    if argv == ["rollback-global-fonts"]:
+        try:
+            result = {"rolledBack": rollback_latest(label="Global font settings")}
+        except TransactionError as exc:
+            print(f"Global font Undo failed: {exc}", file=sys.stderr)
+            return 1
+        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
+        sys.stdout.write("\n")
+        return 0
     if len(argv) == 2 and argv[0] == "appearance-action-status" and argv[1] in {"theme", "background", "unlock"}:
         json.dump(action_status()[argv[1]], sys.stdout, ensure_ascii=False, sort_keys=True)
         sys.stdout.write("\n")
@@ -636,6 +747,24 @@ def main(argv: list[str]) -> int:
         json.dump(inspect_app(argv[1]), sys.stdout, ensure_ascii=False, sort_keys=True)
         sys.stdout.write("\n")
         return 0
+    if len(argv) == 2 and argv[0] == "audit-app":
+        try:
+            result = audit_manual_app(argv[1])
+        except (TransactionError, OSError, ValueError) as exc:
+            print(f"App audit could not be saved safely: {exc}", file=sys.stderr)
+            return 1
+        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
+        sys.stdout.write("\n")
+        return 0
+    if argv == ["clear-manual-app-audit"]:
+        try:
+            clear_manual_app_registry()
+        except (TransactionError, OSError, ValueError) as exc:
+            print(f"App audit registry could not be cleared safely: {exc}", file=sys.stderr)
+            return 1
+        json.dump({"cleared": True}, sys.stdout)
+        sys.stdout.write("\n")
+        return 0
     if argv == ["inventory"]:
         json.dump(inventory(), sys.stdout, ensure_ascii=False, sort_keys=True)
         sys.stdout.write("\n")
@@ -680,29 +809,6 @@ def main(argv: list[str]) -> int:
             print(f"Ghostty font Apply failed: {exc}", file=sys.stderr)
             return 1
         json.dump({"transaction": transaction_id, "font": entry["name"], "sizePt": font_size}, sys.stdout, ensure_ascii=False)
-        sys.stdout.write("\n")
-        return 0
-    if len(argv) == 3 and argv[0] == "apply-mail-system-font":
-        try:
-            entry = next((item for item in font_entries() if item["id"] == argv[1]), None)
-            if entry is None:
-                raise TransactionError("selected font is no longer in the current catalog")
-            size_pt = int(argv[2])
-            target = betterbird_font_target(str(entry["name"]), size_pt)
-            transaction_id = apply_file_targets(target, label="Mail application system font")
-        except (TransactionError, ValueError, OSError) as exc:
-            print(f"Mail application font Apply failed: {exc}", file=sys.stderr)
-            return 1
-        json.dump({"transaction": transaction_id, "font": entry["name"], "sizePt": size_pt, "application": "Betterbird"}, sys.stdout, ensure_ascii=False)
-        sys.stdout.write("\n")
-        return 0
-    if len(argv) == 1 and argv[0] == "rollback-mail-system-font":
-        try:
-            transaction_id = rollback_latest(label="Mail application system font")
-        except TransactionError as exc:
-            print(f"Mail application font rollback failed: {exc}", file=sys.stderr)
-            return 1
-        json.dump({"rolledBack": transaction_id}, sys.stdout)
         sys.stdout.write("\n")
         return 0
     print("Usage: controller.py inventory | audit-appearance JSON | transaction {status|recover|rollback}", file=sys.stderr)

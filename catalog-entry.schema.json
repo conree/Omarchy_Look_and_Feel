@@ -13,6 +13,7 @@
     },
     "kind": { "enum": ["font", "theme", "unlock", "background", "icon"] },
     "name": { "type": "string", "minLength": 1 },
+    "monospace": { "type": "boolean" },
     "source": {
       "oneOf": [
         { "type": "string", "minLength": 1 },

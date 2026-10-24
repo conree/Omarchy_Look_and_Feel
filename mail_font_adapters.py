@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import configparser
 import os
-import re
 import shutil
 from pathlib import Path
 
@@ -120,56 +119,3 @@ def discover_mail_profiles() -> list[dict[str, str]]:
                 result["prefsPath"] = f"{candidates[0]['path']}/prefs.js"
         results.append(result)
     return results
-
-
-def betterbird_prefs_relative_path() -> str | None:
-    for client in discover_mail_profiles():
-        if client["desktopId"] == "eu.betterbird.Betterbird.desktop" and client["installed"] == "true" and client["prefsPath"]:
-            return client["prefsPath"]
-    return None
-
-
-def betterbird_font_target(family: str, size_pt: int = 12) -> dict[str, bytes]:
-    """Build a strict Gecko prefs.js update, retaining all unrelated profile prefs."""
-    if isinstance(size_pt, bool) or not isinstance(size_pt, int) or not 6 <= size_pt <= 48:
-        raise ValueError("Betterbird font size must be an integer between 6 and 48 pt")
-    relative = betterbird_prefs_relative_path()
-    if not relative:
-        raise ValueError("Betterbird is not installed or its selected profile could not be resolved")
-    proc = Path("/proc")
-    try:
-        processes = list(proc.iterdir())
-    except OSError as exc:
-        raise ValueError("cannot inspect running processes safely; refusing to edit Betterbird preferences") from exc
-    for process in processes:
-        if not process.name.isdigit():
-            continue
-        try:
-            comm = (process / "comm").read_text(encoding="utf-8", errors="replace").strip().casefold()
-            cmdline = (process / "cmdline").read_bytes().split(b"\0")
-        except (OSError, PermissionError):
-            continue
-        args = [Path(arg.decode("utf-8", "replace")).name.casefold() for arg in cmdline if arg]
-        if comm in {"betterbird", "betterbird-bin"} or any(arg in {"betterbird", "betterbird-bin"} for arg in args):
-            raise ValueError("close Betterbird before applying profile preferences so its running process cannot overwrite them")
-    target = HOME / relative
-    if target.is_symlink() or not target.is_file():
-        raise ValueError("Betterbird profile prefs.js is missing or unsafe")
-    original = target.read_bytes()
-    text = original.decode("utf-8")
-    updates = {
-        "font.name.sans-serif.x-western": family,
-        "font.size.variable.x-western": str(size_pt),
-        "msgcompose.font_face": family,
-    }
-    for key, value in updates.items():
-        if key == "font.size.variable.x-western":
-            pattern = re.compile(r'^(\s*user_pref\("' + re.escape(key) + r'",\s*)(?:[0-9]+)(\);\s*)$', re.MULTILINE)
-            replacement = lambda m: m.group(1) + value + m.group(2)
-        else:
-            pattern = re.compile(r'^(\s*user_pref\("' + re.escape(key) + r'",\s*)"(?:[^"\\]|\\.)*("\);\s*)$', re.MULTILINE)
-            replacement = lambda m: m.group(1) + '"' + value.replace("\\", "\\\\").replace('"', '\\"') + m.group(2)
-        text, count = pattern.subn(replacement, text)
-        if count != 1:
-            raise ValueError(f"expected exactly one existing Betterbird preference: {key}")
-    return {"betterbird-prefs": text.encode("utf-8")}

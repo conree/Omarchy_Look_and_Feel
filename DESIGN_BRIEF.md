@@ -84,7 +84,7 @@ pass after running Omarchy's text-size slider and `omarchy-font-set`.
 The owner resolved the original questions on 2026-10-21. Current requirements
 and priority are recorded in Section 10 below. Remaining implementation
 decisions are sunrise/sunset handling. A versioned
-read-only priority-app inventory is recorded in the application support matrix;
+read-only application inventory is recorded in the application support matrix;
 LibreOffice Fresh is absent and the Hey CLI version was not queried because its
 launcher can invoke mise and alter its managed tool state. The canonical
 live Omarchy catalog sources are recorded in Section 12.
@@ -176,11 +176,10 @@ this brief wherever they conflict.
 7. **Display setup:** monitor arrangement, resolution, orientation, and
    primary display stay outside Look and Feel. Per-display scale also remains
    in display setup.
-8. **Application priority:** first cover email clients (including Hey, the
-   email client identified by the owner as native to Omarchy), LibreOffice
-   Fresh, OnlyOffice Desktop Editors, the file manager, terminals, and the
-   browser. The owner estimates this covers about 80% of everyday use. IDEs
-   follow, then content-creation tools.
+8. **Application coverage:** treat all applications equally. Global font and
+   theme selections apply across every verified control surface. When the
+   automatic audit misses an app, the user can enter it for a targeted audit
+   so its verified controls can join the same global settings.
 9. **Font provenance:** offer fonts packaged by the installed Linux
    distribution and explicitly verified open-source alternatives. A font
    discovered in a local directory or online catalog is not automatically
@@ -256,7 +255,7 @@ them. It is therefore recorded as a discovery reference only; its images are
 not copied into the canonical catalog. Any future import needs per-image
 rights/provenance review or an explicit user-directed personal import path.
 
-## 13. Priority application support matrix — 2026-10-22
+## 13. Application support matrix — 2026-10-22
 
 The printable [application support matrix](APPLICATION_SUPPORT_MATRIX.html)
 records package versions, observed configuration files, current font/theme
@@ -458,8 +457,15 @@ proof that an app is ready for automatic modification. Unidentified or
 unverified control surfaces remain marked for review. Reversible adapters can
 then be added by verified shared surface and app-specific setting, with
 snapshot, readback, undo, and restart/reload evidence before a surface is
-reported as applied. The first implementation currently applies a Terminal
-font to Ghostty and a system font to Betterbird. The census also locates Omarchy Quickshell's active
+reported as applied. The current worktree adds one global font transaction for
+GTK 3/4, Omarchy shell font settings, and known terminal configuration
+adapters. Its terminal discovery is limited to the supported desktop entries
+and matching executables; unsupported detected terminals must block Apply.
+Manual audit persists verified shared GTK 3/4 and supported terminal font
+surfaces in a private registry. Global font Apply revalidates them and blocks
+if any manually audited entry is unsupported or unresolved. The audit does not
+register app-specific theme controls; theme Apply reports the unsupported
+manual-audit count. The census also locates Omarchy Quickshell's active
 widgets and Shell Font plugin as a separate bar font surface.
 
 ## 21. Omarchy theme, background, and unlock actions — 2026-10-23

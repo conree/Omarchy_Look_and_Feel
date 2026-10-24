@@ -281,12 +281,21 @@ HANDLERS: dict[str, tuple[Callable[[], str | None], Callable[[str], None]]] = {
 }
 
 
-def _recover_pending_locked() -> list[str]:
+def _recover_pending_locked(*, allow_unlock_recovery: bool = False) -> list[str]:
+    pending_states = {"prepared", "applying", "rolling_back", "recovery_required"}
+    if not allow_unlock_recovery:
+        # Check before recovering any other kind: a normal theme/background
+        # action must never replay a privileged boot-unlock operation.
+        if any(journal["state"] in pending_states for _, _, journal in _records("unlock")):
+            raise TransactionError(
+                "an unfinished boot-unlock operation requires explicit unlock recovery; "
+                "this action will not change boot assets"
+            )
     recovered: list[str] = []
     for kind in sorted(ACTION_KINDS):
         getter, setter = HANDLERS[kind]
         for _, directory, journal in _records(kind):
-            if journal["state"] not in {"prepared", "applying", "rolling_back", "recovery_required"}:
+            if journal["state"] not in pending_states:
                 continue
             current = getter()
             before, after = str(journal["before"]), str(journal["after"])
@@ -339,7 +348,7 @@ def apply_action(kind: str, target: str, allowed_targets: set[str]) -> dict[str,
         raise TransactionError(f"selected {kind} is no longer available")
     directory = transactions_path()
     with _locked(directory):
-        _recover_pending_locked()
+        _recover_pending_locked(allow_unlock_recovery=kind == "unlock")
         getter, setter = HANDLERS[kind]
         before = getter()
         if before is None:
@@ -454,7 +463,7 @@ def rollback_action(kind: str) -> dict[str, object]:
     if kind not in ACTION_KINDS:
         raise TransactionError(f"unknown appearance action: {kind}")
     with _locked(transactions_path()):
-        _recover_pending_locked()
+        _recover_pending_locked(allow_unlock_recovery=kind == "unlock")
         records = _records(kind)
         committed = [item for item in records if item[2]["state"] == "committed"]
         if not committed:

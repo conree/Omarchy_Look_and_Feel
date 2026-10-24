@@ -18,7 +18,6 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator, Mapping
-from mail_font_adapters import betterbird_prefs_relative_path
 
 
 SCHEMA_VERSION = 2
@@ -51,6 +50,8 @@ FILE_TARGETS: dict[str, str] = {
     "qt6ct-settings": (_configured_home_rel / "qt6ct" / "qt6ct.conf").as_posix(),
     "fontconfig-monospace": (_configured_home_rel / "fontconfig" / "fonts.conf").as_posix(),
     "omarchy-shell-font": (_configured_home_rel / "omarchy" / "shell-font.json").as_posix(),
+    "omarchy-shell-style": (_configured_home_rel / "omarchy" / "shell.toml").as_posix(),
+    "global-font-selection": (_configured_home_rel / "omarchy-look-and-feel" / "font-selection.json").as_posix(),
     "alacritty-config": (_configured_home_rel / "alacritty" / "alacritty.toml").as_posix(),
     "kitty-config": (_configured_home_rel / "kitty" / "kitty.conf").as_posix(),
     "foot-config": (_configured_home_rel / "foot" / "foot.ini").as_posix(),
@@ -60,11 +61,6 @@ FILE_TARGETS: dict[str, str] = {
     "typora-base-user-css": (_configured_home_rel / "Typora" / "themes" / "base.user.css").as_posix(),
     "brave-default-preferences": (_configured_home_rel / "BraveSoftware" / "Brave-Browser" / "Default" / "Preferences").as_posix(),
 }
-_betterbird_prefs = betterbird_prefs_relative_path()
-if _betterbird_prefs:
-    FILE_TARGETS["betterbird-prefs"] = _betterbird_prefs
-
-
 class TransactionError(RuntimeError):
     """A transaction could not safely complete or recover."""
 
@@ -455,7 +451,7 @@ def _journal_targets(journal: dict[str, object]) -> list[dict[str, object]]:
 
 
 def _historical_mail_target(target_id: str, relative: str) -> bool:
-    """Keep old Betterbird snapshots rollback-eligible if profile discovery changes."""
+    """Keep legacy Betterbird snapshots rollback-eligible without allowing new targets."""
     if target_id != "betterbird-prefs":
         return False
     rel = Path(relative)
@@ -822,3 +818,18 @@ def transaction_status() -> list[dict[str, str]]:
         journal = _load_journal(candidate)
         result.append({"id": candidate.name, "state": str(journal.get("state", "unknown"))})
     return result
+
+
+def has_committed_transaction(*, label: str) -> bool:
+    """Report whether a matching transaction can be undone without changing files."""
+    directory = transactions_path()
+    _check_home_destination(directory)
+    if not directory.is_dir():
+        return False
+    for candidate in directory.iterdir():
+        if candidate.is_symlink() or not candidate.is_dir() or not TRANSACTION_ID_RE.fullmatch(candidate.name):
+            continue
+        journal = _load_journal(candidate)
+        if journal.get("state") == "committed" and journal.get("label") == label:
+            return True
+    return False
