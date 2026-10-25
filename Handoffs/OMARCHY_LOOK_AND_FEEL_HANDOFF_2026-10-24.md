@@ -1,3 +1,5 @@
+> Historical checkpoint. Later October 24–25 work supersedes this operational status: [/home/si/Projects/Omarchy_Plugins/Look_and_Feel/Handoffs/OMARCHY_LOOK_AND_FEEL_HANDOFF_2026-10-25.md](/home/si/Projects/Omarchy_Plugins/Look_and_Feel/Handoffs/OMARCHY_LOOK_AND_FEEL_HANDOFF_2026-10-25.md). In particular, boot unlock is now blocked and preview-only.
+
 # Look & Feel session handoff — 2026-10-24
 
 ## Repository and checkpoint

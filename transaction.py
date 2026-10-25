@@ -38,9 +38,28 @@ try:
     _configured_home_rel = _configured_home.relative_to(Path.home())
 except ValueError:
     _configured_home_rel = Path(".config")
+_data_home = Path(os.environ.get("XDG_DATA_HOME", str(Path.home() / ".local/share")))
+if not _data_home.is_absolute():
+    _data_home = Path.home() / ".local/share"
+try:
+    _data_home_rel = _data_home.relative_to(Path.home())
+except ValueError:
+    _data_home_rel = Path(".local/share")
 _ghostty_dir = _configured_home / "ghostty"
 _ghostty_filename = "config.ghostty" if (_ghostty_dir / "config.ghostty").exists() else "config"
+# Follow WezTerm's documented config lookup; the transaction boundary rejects
+# symlinks and paths outside this user's home before any read/write.
+_wezterm_override = os.environ.get('WEZTERM_CONFIG_FILE')
+_wezterm_candidates = [_configured_home / 'wezterm/wezterm.lua', Path.home() / '.config/wezterm/wezterm.lua', Path.home() / '.wezterm.lua']
+_wezterm_path = Path(_wezterm_override) if _wezterm_override else next((p for p in _wezterm_candidates if p.exists() or p.is_symlink()), _wezterm_candidates[0])
+try:
+    _wezterm_rel = _wezterm_path.relative_to(Path.home()).as_posix()
+except ValueError:
+    # Keep the unsupported override as a boundary violation, never silently
+    # edit a different configuration that the application won't load.
+    _wezterm_rel = str(_wezterm_path)
 FILE_TARGETS: dict[str, str] = {
+    "hypr-qt-integration": (_configured_home_rel / "hypr" / "hyprland.lua").as_posix(),
     "ghostty-config": (_configured_home_rel / "ghostty" / _ghostty_filename).as_posix(),
     "ghostty-font-overlay": (_configured_home_rel / "ghostty" / "look-and-feel-font.conf").as_posix(),
     "terminal-font-selection": (_configured_home_rel / "ghostty" / "look-and-feel-font-selection.json").as_posix(),
@@ -55,12 +74,31 @@ FILE_TARGETS: dict[str, str] = {
     "alacritty-config": (_configured_home_rel / "alacritty" / "alacritty.toml").as_posix(),
     "kitty-config": (_configured_home_rel / "kitty" / "kitty.conf").as_posix(),
     "foot-config": (_configured_home_rel / "foot" / "foot.ini").as_posix(),
-    "wezterm-config": (_configured_home_rel / "wezterm" / "wezterm.lua").as_posix(),
+    "wezterm-config": _wezterm_rel,
     "cursor-settings": (_configured_home_rel / "Cursor" / "User" / "settings.json").as_posix(),
+    "brave-flags": (_configured_home_rel / "brave-flags.conf").as_posix(),
+    "onlyoffice-settings": (_configured_home_rel / "onlyoffice" / "DesktopEditors.conf").as_posix(),
+    "onlyoffice-launcher": (_data_home_rel / "applications" / "onlyoffice-desktopeditors.desktop").as_posix(),
+    "gtk3-css": (_configured_home_rel / "gtk-3.0" / "gtk.css").as_posix(),
+    "gtk4-css": (_configured_home_rel / "gtk-4.0" / "gtk.css").as_posix(),
+    "typora-active-css": (_configured_home_rel / "Typora" / "themes" / "look-and-feel.css").as_posix(),
+    "appearance-policy": (_configured_home_rel / "omarchy-look-and-feel" / "policy.json").as_posix(),
+    "typora-profile": (_configured_home_rel / "Typora" / "profile.data").as_posix(),
+    "typora-light-css": (_configured_home_rel / "Typora" / "themes" / "look-and-feel-light.css").as_posix(),
+    "typora-dark-css": (_configured_home_rel / "Typora" / "themes" / "look-and-feel-dark.css").as_posix(),
+    "qt5ct-colors": (_configured_home_rel / "qt5ct" / "colors" / "look-and-feel.conf").as_posix(),
+    "qt6ct-colors": (_configured_home_rel / "qt6ct" / "colors" / "look-and-feel.conf").as_posix(),
     "typora-settings": (_configured_home_rel / "Typora" / "conf" / "conf.user.json").as_posix(),
     "typora-base-user-css": (_configured_home_rel / "Typora" / "themes" / "base.user.css").as_posix(),
     "brave-default-preferences": (_configured_home_rel / "BraveSoftware" / "Brave-Browser" / "Default" / "Preferences").as_posix(),
 }
+# Profile discovery returns no target when selection is ambiguous.
+from mail_font_adapters import writable_betterbird_profile
+_betterbird_prefs = writable_betterbird_profile()
+if _betterbird_prefs:
+    FILE_TARGETS["betterbird-prefs"] = _betterbird_prefs
+
+
 class TransactionError(RuntimeError):
     """A transaction could not safely complete or recover."""
 
@@ -125,7 +163,8 @@ def _mkdir_private(path: Path) -> None:
     os.chmod(path, 0o700)
 
 
-def _ensure_home_path(path: Path, *, allow_missing_leaf: bool = True) -> Path:
+def _ensure_home_path(path: Path, *, allow_missing_leaf: bool = True,
+                      allow_missing_parents: bool = False) -> Path:
     """Reject paths outside HOME, symlink components, and non-regular leaves."""
     home = _home()
     absolute = path if path.is_absolute() else home / path
@@ -133,6 +172,8 @@ def _ensure_home_path(path: Path, *, allow_missing_leaf: bool = True) -> Path:
         relative = absolute.relative_to(home)
     except ValueError as exc:
         raise TransactionError(f"managed path is outside the home directory: {absolute}") from exc
+    if ".." in relative.parts:
+        raise TransactionError(f"managed path contains a parent traversal: {absolute}")
     current = home
     parts = relative.parts
     for index, part in enumerate(parts):
@@ -140,7 +181,8 @@ def _ensure_home_path(path: Path, *, allow_missing_leaf: bool = True) -> Path:
         try:
             info = current.lstat()
         except FileNotFoundError:
-            if index < len(parts) - 1 or not allow_missing_leaf:
+            is_parent = index < len(parts) - 1
+            if (is_parent and not allow_missing_parents) or (not is_parent and not allow_missing_leaf):
                 raise TransactionError(f"managed path component does not exist: {current}")
             continue
         if stat.S_ISLNK(info.st_mode):
@@ -152,9 +194,16 @@ def _ensure_home_path(path: Path, *, allow_missing_leaf: bool = True) -> Path:
     return absolute
 
 
+def require_wezterm_location():
+    if _wezterm_override and not Path(_wezterm_override).is_absolute():
+        raise TransactionError('Relative WEZTERM_CONFIG_FILE is ambiguous; use an absolute configuration path')
+
+
 def _target_paths(target_contents: Mapping[str, bytes]) -> dict[str, Path]:
     if not target_contents:
         raise TransactionError("no application target is enabled; refusing a settings-only Apply")
+    if 'wezterm-config' in target_contents:
+        require_wezterm_location()
     unknown = set(target_contents) - set(FILE_TARGETS)
     if unknown:
         raise TransactionError("unregistered application target(s): " + ", ".join(sorted(unknown)))
@@ -175,11 +224,37 @@ def _target_paths(target_contents: Mapping[str, bytes]) -> dict[str, Path]:
             raise TransactionError(f"target content for {target_id} must be bytes")
         if len(payload) > MAX_TARGET_BYTES:
             raise TransactionError(f"target content for {target_id} exceeds the size limit")
-        target_path = _ensure_home_path(_home() / rel)
+        target_path = _ensure_home_path(_home() / rel, allow_missing_parents=True)
+        if target_path.exists() and target_path.is_dir():
+            raise TransactionError(f"managed target is not a regular file: {target_path}")
         if target_path == reserved or target_path in paths.values():
             raise TransactionError(f"duplicate or reserved path in target allowlist: {target_id}")
         paths[target_id] = target_path
     return paths
+
+
+def _create_target_parents(paths: Mapping[str, Path]) -> None:
+    """Prepare allowlisted destinations without changing existing permissions."""
+    # Validate every destination before creating any directories. The ordinary
+    # snapshot/write checks still require these parents to exist afterward.
+    for path in paths.values():
+        _ensure_home_path(path, allow_missing_parents=True)
+        if path.exists() and path.is_dir():
+            raise TransactionError(f"managed target is not a regular file: {path}")
+    home = _home()
+    for path in paths.values():
+        current = home
+        for part in path.parent.relative_to(home).parts:
+            current = current / part
+            try:
+                current.mkdir(mode=0o700)
+            except FileExistsError:
+                info = current.lstat()
+                if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
+                    raise TransactionError(f"unsafe managed directory: {current}")
+            else:
+                _fsync_dir(current.parent)
+        _ensure_home_path(path)
 
 
 def validate_settings(settings: object) -> dict[str, object]:
@@ -261,6 +336,11 @@ def _fsync_dir(directory: Path) -> None:
 
 
 def _atomic_write(path: Path, payload: bytes, mode: int) -> None:
+    from managed_preferences import guard_paths
+    guard_paths([path])
+    if path.name == "Preferences" and str(path.relative_to(_home())) == FILE_TARGETS.get("brave-default-preferences"):
+        from browser_font_actions import assert_closed_default
+        assert_closed_default(path)
     parent = path.parent
     if not parent.is_dir():
         raise TransactionError(f"target parent directory does not exist: {parent}")
@@ -403,7 +483,7 @@ def _journal_targets(journal: dict[str, object]) -> list[dict[str, object]]:
     seen_ids: set[str] = set()
     for item in targets:
         required = {"id", "relativePath", "before"}
-        optional = {"appliedSha256", "appliedMode"}
+        optional = {"appliedSha256", "appliedMode", "mailFontsAfter", "browserFontsAfter", "managedEdits"}
         if not isinstance(item, dict) or not required.issubset(item) or set(item) - required - optional:
             raise TransactionError("invalid target entry in transaction journal")
         target_id, relative = item["id"], item["relativePath"]
@@ -438,10 +518,23 @@ def _journal_targets(journal: dict[str, object]) -> list[dict[str, object]]:
             or item["appliedMode"] & ~0o777
         ):
             raise TransactionError("invalid applied mode in transaction journal")
-        if target_id != "settings" and FILE_TARGETS.get(target_id) != relative and not _historical_mail_target(target_id, relative):
+        if target_id != "settings" and FILE_TARGETS.get(target_id) != relative and not _historical_mail_target(target_id, relative) and not (target_id == "wezterm-config" and relative in {".wezterm.lua", ".config/wezterm/wezterm.lua", (_configured_home_rel / "wezterm/wezterm.lua").as_posix()}):
             raise TransactionError(f"journal target is no longer in the allowlist: {target_id}")
         if target_id == "settings" and relative != str(settings_path().relative_to(_home())):
             raise TransactionError("settings path changed since the transaction was prepared")
+        if "mailFontsAfter" in item:
+            if target_id != "betterbird-prefs":
+                raise TransactionError("mail font metadata on an unrelated target")
+            from app_font_actions import validate_mail_font_values
+            validate_mail_font_values(item["mailFontsAfter"])
+        if "browserFontsAfter" in item:
+            if target_id != "brave-default-preferences":
+                raise TransactionError("browser font metadata on an unrelated target")
+            from browser_font_actions import validate
+            validate(item["browserFontsAfter"])
+        if "managedEdits" in item:
+            from managed_preferences import validate_edits
+            validate_edits(target_id, item["managedEdits"])
         parsed.append(item)
     if "settings" in seen_ids and sum(item["id"] == "settings" for item in parsed) != 1:
         raise TransactionError("transaction journal must contain exactly one settings snapshot")
@@ -464,40 +557,100 @@ def _historical_mail_target(target_id: str, relative: str) -> bool:
 
 
 def _restore_transaction(transaction_dir: Path, journal: dict[str, object]) -> None:
-    journal["state"] = "rolling_back"
-    journal["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    _write_journal(transaction_dir / "transaction.json", journal)
-    entries = _journal_targets(journal)
-    errors: list[str] = []
-    for item in reversed(entries):
-        try:
-            target = _ensure_home_path(_home() / str(item["relativePath"]))
-            before = item["before"]
-            if not isinstance(before, dict):
-                raise TransactionError("invalid target snapshot record")
-            current = _current_file_state(target)
-            if _same_saved_state(current, before):
-                continue
-            expected_hash = item.get("appliedSha256")
-            expected_mode = item.get("appliedMode")
-            if (
-                not isinstance(expected_hash, str)
-                or current.get("sha256") != expected_hash
-                or current.get("mode") != expected_mode
-            ):
-                raise TransactionError(f"target changed independently; preserving it for manual recovery: {target}")
-            _restore(target, transaction_dir, before)
-        except Exception as exc:  # Keep restoring the remaining targets.
-            errors.append(f"{item.get('id')}: {exc}")
-    journal["updatedAt"] = datetime.now(timezone.utc).isoformat()
-    if errors:
-        journal["state"] = "recovery_required"
-        journal["recoveryErrors"] = errors
+    from app_font_actions import lock_mail_paths
+    paths = [_ensure_home_path(_home() / str(row["relativePath"])) for row in _journal_targets(journal)]
+    from browser_font_actions import lock_paths
+    from managed_preferences import guard_paths
+    guard_paths(paths)
+    with lock_mail_paths(paths), lock_paths(paths):
+        journal["state"] = "rolling_back"
+        journal["updatedAt"] = datetime.now(timezone.utc).isoformat()
         _write_journal(transaction_dir / "transaction.json", journal)
-        raise TransactionError("rollback incomplete; recovery required: " + "; ".join(errors))
-    journal["state"] = "rolled_back"
-    journal.pop("recoveryErrors", None)
-    _write_journal(transaction_dir / "transaction.json", journal)
+        entries = _journal_targets(journal)
+        errors: list[str] = []
+        if "desktopFonts" in journal:
+            try:
+                import desktop_fonts
+                desktop_fonts.restore(journal["desktopFonts"])
+            except Exception as exc:
+                errors.append(f"desktop fonts: {exc}")
+        for item in reversed(entries):
+            try:
+                target = _ensure_home_path(_home() / str(item["relativePath"]))
+                before = item["before"]
+                if not isinstance(before, dict):
+                    raise TransactionError("invalid target snapshot record")
+                current = _current_file_state(target)
+                if _same_saved_state(current, before):
+                    continue
+                if "managedEdits" in item and (current.get("sha256") != item.get("appliedSha256") or item["id"] in journal.get("groupTouched", [])):
+                    from managed_preferences import restore
+                    restored = restore(item["id"], target.read_bytes(), item["managedEdits"])
+                    _assert_unchanged(target, current)
+                    _atomic_write(target, restored, current["mode"])
+                    if target.read_bytes() != restored:
+                        raise TransactionError("managed preference restoration readback failed")
+                    continue
+                if "mailFontsAfter" in item and (current.get("sha256") != item.get("appliedSha256") or item["id"] in journal.get("groupTouched", [])):
+                    from app_font_actions import mail_font_values, merge_mail_fonts
+                    name = before.get("snapshot")
+                    if not before.get("exists") or not isinstance(name, str):
+                        raise TransactionError("mail preference snapshot is missing")
+                    snapshot = _ensure_home_path(transaction_dir / "before" / name, allow_missing_leaf=False)
+                    prior = snapshot.read_bytes()
+                    if _sha256(prior) != before["sha256"]:
+                        raise TransactionError("mail font snapshot integrity check failed")
+                    old_values = mail_font_values(prior.decode("utf-8"))
+                    live = target.read_bytes()
+                    current_values = mail_font_values(live.decode("utf-8"))
+                    if any(current_values[key] not in (old_values[key], item["mailFontsAfter"][key]) for key in old_values):
+                        raise TransactionError("mail fonts changed independently; preserving them")
+                    restored = merge_mail_fonts(live.decode("utf-8"), old_values).encode()
+                    _assert_unchanged(target, current)
+                    _atomic_write(target, restored, current["mode"])
+                    if mail_font_values(target.read_text()) != old_values:
+                        raise TransactionError("mail font restoration readback failed")
+                    continue
+                if "browserFontsAfter" in item and (current.get("sha256") != item.get("appliedSha256") or item["id"] in journal.get("groupTouched", [])):
+                    from browser_font_actions import values, merge
+                    name = before.get("snapshot")
+                    if not before.get("exists") or not isinstance(name, str):
+                        raise TransactionError("browser preference snapshot is missing")
+                    snapshot = _ensure_home_path(transaction_dir / "before" / name, allow_missing_leaf=False)
+                    prior = snapshot.read_bytes()
+                    if _sha256(prior) != before["sha256"]:
+                        raise TransactionError("browser font snapshot integrity check failed")
+                    old_values = values(json.loads(prior))
+                    live = json.loads(target.read_bytes())
+                    current_values = values(live)
+                    if any(current_values[key] not in (old_values[key], item["browserFontsAfter"][key]) for key in old_values):
+                        raise TransactionError("browser fonts changed independently; preserving them")
+                    restored = (json.dumps(merge(live, old_values), ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+                    _assert_unchanged(target, current)
+                    _atomic_write(target, restored, current["mode"])
+                    if values(json.loads(target.read_bytes())) != old_values:
+                        raise TransactionError("browser font restoration readback failed")
+                    continue
+                expected_hash = item.get("appliedSha256")
+                expected_mode = item.get("appliedMode")
+                if (
+                    not isinstance(expected_hash, str)
+                    or current.get("sha256") != expected_hash
+                    or current.get("mode") != expected_mode
+                ):
+                    raise TransactionError(f"target changed independently; preserving it for manual recovery: {target}")
+                _restore(target, transaction_dir, before)
+            except Exception as exc:  # Keep restoring the remaining targets.
+                errors.append(f"{item.get('id')}: {exc}")
+        journal["updatedAt"] = datetime.now(timezone.utc).isoformat()
+        if errors:
+            journal["state"] = "recovery_required"
+            journal["recoveryErrors"] = errors
+            _write_journal(transaction_dir / "transaction.json", journal)
+            raise TransactionError("rollback incomplete; recovery required: " + "; ".join(errors))
+        journal["state"] = "rolled_back"
+        journal.pop("recoveryErrors", None)
+        _write_journal(transaction_dir / "transaction.json", journal)
 
 
 @contextmanager
@@ -546,7 +699,7 @@ def recover_pending() -> list[str]:
     if not directory.exists():
         return []
     with _locked(directory):
-        recovered: list[str] = []
+        recovered: list[str] = _recover_group_undos(directory)
         for transaction_dir in _pending_transactions(directory):
             journal = _load_journal(transaction_dir)
             _restore_transaction(transaction_dir, journal)
@@ -574,6 +727,7 @@ def apply_settings(settings: object, target_contents: Mapping[str, bytes], catal
             pending_journal = _load_journal(pending_dir)
             _restore_transaction(pending_dir, pending_journal)
             recovered_before_apply.append(pending_dir.name)
+        _create_target_parents(paths)
         _mkdir_private(config_file.parent)
         _ensure_home_path(config_file)
         transaction_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
@@ -667,16 +821,69 @@ def apply_settings(settings: object, target_contents: Mapping[str, bytes], catal
         return transaction_id
 
 
-def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str) -> str:
+def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str,
+                       desktop_font_values: Mapping[str, str] | None = None,
+                       parent_transaction: str | None = None,
+                       appearance_context: dict | None = None,
+                       owned_fields: Mapping[str, set[str]] | None = None) -> str:
     """Apply only declared application files, with durable snapshots and rollback."""
     paths = _target_paths(target_contents)
     directory = transactions_path()
-    with _locked(directory):
+    if parent_transaction is not None and not TRANSACTION_ID_RE.fullmatch(parent_transaction):
+        raise TransactionError("invalid parent transaction")
+    if appearance_context is not None:
+        if not isinstance(appearance_context, dict) or set(appearance_context) != {"themeBefore", "themeAfter"} or any(
+                not isinstance(v, str) or not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", v) for v in appearance_context.values()):
+            raise TransactionError("invalid appearance operation context")
+    from managed_preferences import guard_paths
+    guard_paths(paths.values())
+    from app_font_actions import lock_mail_paths
+    from browser_font_actions import lock_paths
+    with _locked(directory), lock_mail_paths(paths.values()), lock_paths(paths.values()):
+        _recover_group_undos(directory)
         recovered_before_apply: list[str] = []
         for pending_dir in _pending_transactions(directory):
             pending_journal = _load_journal(pending_dir)
             _restore_transaction(pending_dir, pending_journal)
             recovered_before_apply.append(pending_dir.name)
+        _recover_group_undos(directory)
+        from managed_preferences import FIELDS, decode, encode
+        if owned_fields is not None:
+            for name, fields in owned_fields.items():
+                if name not in FIELDS or not isinstance(fields, set) or fields - FIELDS[name]:
+                    raise TransactionError("invalid owned preference fields")
+        target_contents = dict(target_contents)
+        for target_id in set(target_contents) & set(FIELDS):
+            path = paths[target_id]
+            if path.exists():
+                current = decode(target_id, path.read_bytes())
+                wanted = decode(target_id, target_contents[target_id])
+                for key in (owned_fields or {}).get(target_id, FIELDS[target_id]):
+                    if key in wanted:
+                        current[key] = wanted[key]
+                    else:
+                        current.pop(key, None)
+                target_contents[target_id] = encode(target_id, current)
+        _target_paths(target_contents)
+        if "betterbird-prefs" in target_contents:
+            from app_font_actions import mail_font_values, merge_mail_fonts
+            target_contents = dict(target_contents)
+            wanted = mail_font_values(target_contents["betterbird-prefs"].decode("utf-8"))
+            current_mail = paths["betterbird-prefs"].read_text(encoding="utf-8")
+            target_contents["betterbird-prefs"] = merge_mail_fonts(current_mail, wanted).encode()
+            _target_paths(target_contents)  # Recheck size/path limits after the fresh merge.
+        if "brave-default-preferences" in target_contents:
+            from browser_font_actions import values, merge
+            target_contents = dict(target_contents)
+            wanted = values(json.loads(target_contents["brave-default-preferences"]))
+            current_browser = json.loads(paths["brave-default-preferences"].read_text())
+            target_contents["brave-default-preferences"] = (json.dumps(merge(current_browser, wanted), ensure_ascii=False, separators=(",", ":")) + "\n").encode()
+            _target_paths(target_contents)
+        desktop_snapshot = None
+        if desktop_font_values is not None:
+            import desktop_fonts
+            desktop_snapshot = desktop_fonts.capture(desktop_font_values)
+        _create_target_parents(paths)
         _mkdir_private(directory)
         transaction_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
         transaction_dir = directory / transaction_id
@@ -696,6 +903,15 @@ def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str) -> s
                 "label": label[:80], "targets": entries,
                 "recoveredBeforeApply": recovered_before_apply,
             }
+            if appearance_context is not None:
+                journal["appearanceContext"] = appearance_context
+            if parent_transaction is not None:
+                parent_journal = _load_journal(directory / parent_transaction)
+                if parent_journal["state"] != "committed" or parent_journal.get("parentTransaction"):
+                    raise TransactionError("automatic reconciliation has no committed parent")
+                journal["parentTransaction"] = parent_transaction
+            if desktop_snapshot is not None:
+                journal["desktopFonts"] = desktop_snapshot
             _write_journal(transaction_dir / "transaction.json", journal)
             _fsync_dir(transaction_dir)
         except BaseException:
@@ -711,10 +927,21 @@ def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str) -> s
                 before = entry["before"]
                 if not isinstance(before, dict):
                     raise TransactionError(f"invalid target snapshot for {target_id}")
+                _ensure_home_path(path)
                 _assert_unchanged(path, before)
                 old_mode = before["mode"] if before["exists"] else 0o600
                 entry["appliedSha256"] = _sha256(payload)
                 entry["appliedMode"] = old_mode
+                from managed_preferences import FIELDS, edits
+                if target_id in FIELDS:
+                    prior = (transaction_dir / "before" / before["snapshot"]).read_bytes() if before["exists"] else None
+                    entry["managedEdits"] = edits(target_id, prior, payload)
+                if target_id == "betterbird-prefs":
+                    from app_font_actions import mail_font_values
+                    entry["mailFontsAfter"] = mail_font_values(payload.decode("utf-8"))
+                if target_id == "brave-default-preferences":
+                    from browser_font_actions import values
+                    entry["browserFontsAfter"] = values(json.loads(payload))
                 journal["currentTarget"] = target_id
                 _write_journal(transaction_dir / "transaction.json", journal)
                 _atomic_write(path, payload, old_mode)
@@ -724,6 +951,13 @@ def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str) -> s
                 del journal["currentTarget"]
                 journal["updatedAt"] = datetime.now(timezone.utc).isoformat()
                 _write_journal(transaction_dir / "transaction.json", journal)
+            if desktop_snapshot is not None:
+                import desktop_fonts
+                desktop_fonts.apply(desktop_snapshot)
+            if "brave-default-preferences" in paths:
+                from browser_font_actions import assert_closed_default
+                assert_closed_default(paths["brave-default-preferences"])
+            guard_paths(paths.values())
             journal["state"] = "committed"
             journal["committedAt"] = datetime.now(timezone.utc).isoformat()
             journal["updatedAt"] = journal["committedAt"]
@@ -732,6 +966,12 @@ def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str) -> s
             try:
                 _restore_transaction(transaction_dir, journal)
             except Exception as rollback_exc:
+                journal["state"] = "recovery_required"
+                journal["recoveryErrors"] = [str(rollback_exc)[:1000]]
+                try:
+                    _write_journal(transaction_dir / "transaction.json", journal)
+                except Exception:
+                    pass
                 raise TransactionError(f"Apply failed ({exc}); {rollback_exc}") from exc
             raise TransactionError(f"Apply failed and was rolled back: {exc}") from exc
         try:
@@ -766,12 +1006,99 @@ def rollback_latest(*, label: str | None = None) -> str:
             raise TransactionError("there is no committed transaction to roll back")
         _, transaction_dir = max(committed, key=lambda item: item[0])
         journal = _load_journal(transaction_dir)
-        _restore_transaction(transaction_dir, journal)
+        _restore_group(directory, transaction_dir, journal)
         try:
             _prune_committed(directory)
         except Exception:
             pass
         return transaction_dir.name
+
+
+def _prepare_group_undo(directory, transaction_dir, journal):
+    """Preflight a group before recording Undo intent or changing app files."""
+    if journal.get("groupUndoPrepared"):
+        return
+    children = []
+    for candidate in directory.iterdir():
+        if candidate.is_symlink() or not candidate.is_dir() or not TRANSACTION_ID_RE.fullmatch(candidate.name):
+            continue
+        if not (candidate / "transaction.json").exists():
+            continue
+        child = _load_journal(candidate)
+        if child.get("parentTransaction") == transaction_dir.name and child["state"] == "committed":
+            children.append((child.get("createdAt", ""), candidate, child))
+    import copy
+    merged = {row["id"]: copy.deepcopy(row) for row in _journal_targets(journal)}
+    touched = set()
+    unowned_drift = set()
+    for _, child_dir, child in sorted(children):
+        for row in _journal_targets(child):
+            key = row["id"]
+            touched.add(key)
+            if key not in merged:
+                merged[key] = copy.deepcopy(row)
+                before = merged[key]["before"]
+                if before["exists"]:
+                    src = _ensure_home_path(child_dir / "before" / before["snapshot"], allow_missing_leaf=False)
+                    raw = src.read_bytes()
+                    if _sha256(raw) != before["sha256"]:
+                        raise TransactionError("child snapshot integrity check failed")
+                    name = "group-" + child_dir.name + "-" + key + ".before"
+                    _atomic_write(transaction_dir / "before" / name, raw, 0o600)
+                    before["snapshot"] = name
+            else:
+                first = merged[key]
+                if not any(field in first for field in ("managedEdits", "mailFontsAfter", "browserFontsAfter")) and (row["before"].get("sha256") != first.get("appliedSha256") or row["before"].get("mode") != first.get("appliedMode")):
+                    unowned_drift.add(key)
+                for field in ("appliedSha256", "appliedMode", "mailFontsAfter", "browserFontsAfter"):
+                    if field in row:
+                        first[field] = copy.deepcopy(row[field])
+                if "managedEdits" in row:
+                    changes = first.setdefault("managedEdits", {})
+                    for field, change in row["managedEdits"].items():
+                        if field not in changes:
+                            changes[field] = copy.deepcopy(change)
+                        else:
+                            changes[field]["after"] = copy.deepcopy(change["after"])
+    if unowned_drift:
+        raise TransactionError("Undo requires a field-aware adapter for intervening changes; preserving: " + ", ".join(sorted(unowned_drift)))
+    journal["targets"] = list(merged.values())
+    journal["groupTouched"] = sorted(touched)
+    journal["groupChildren"] = [child_dir.name for _, child_dir, _ in sorted(children)]
+    journal["groupUndoPrepared"] = True
+
+
+def _restore_group(directory, transaction_dir, journal):
+    _prepare_group_undo(directory, transaction_dir, journal)
+    journal["groupUndoPending"] = True
+    _write_journal(transaction_dir / "transaction.json", journal)
+    if journal["state"] != "rolled_back":
+        _restore_transaction(transaction_dir, journal)
+    for name in journal.get("groupChildren", []):
+        if not isinstance(name, str) or not TRANSACTION_ID_RE.fullmatch(name):
+            raise TransactionError("invalid child operation identity")
+        path = directory / name
+        child = _load_journal(path)
+        if child.get("parentTransaction") != transaction_dir.name:
+            raise TransactionError("child operation parent mismatch")
+        child["state"] = "rolled_back"
+        _write_journal(path / "transaction.json", child)
+    journal["groupUndoPending"] = False
+    _write_journal(transaction_dir / "transaction.json", journal)
+
+
+def _recover_group_undos(directory):
+    recovered = []
+    for candidate in directory.iterdir():
+        if candidate.is_symlink() or not candidate.is_dir() or not TRANSACTION_ID_RE.fullmatch(candidate.name):
+            continue
+        if not (candidate / "transaction.json").exists():
+            continue
+        journal = _load_journal(candidate)
+        if journal.get("groupUndoPending"):
+            _restore_group(directory, candidate, journal)
+            recovered.append(candidate.name)
+    return recovered
 
 
 def _prune_committed(directory: Path) -> None:
@@ -790,6 +1117,9 @@ def _prune_committed(directory: Path) -> None:
     now = time.time()
     for index, (modified, candidate, journal) in enumerate(completed):
         if index < KEEP_RECENT_TRANSACTIONS or now - modified < MIN_RETENTION_SECONDS:
+            continue
+        if any(item["id"] == "appearance-policy" for item in journal["targets"]) or journal.get("parentTransaction") or journal.get("appearanceContext") or any(
+                item[2].get("parentTransaction") == candidate.name for item in completed):
             continue
         entries = _journal_targets(journal)
         for item in entries:

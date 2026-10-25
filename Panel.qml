@@ -7,12 +7,16 @@ import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
+import "FontActionResult.js" as FontActionResult
 
 Panel {
   id: root
   moduleName: "si.omarchy-look-and-feel"
   ipcTarget: ""
   manageIpc: false
+
+  readonly property color popupForeground: Color.popups.text
+  readonly property color popupBackground: Color.popups.background
 
   property var anchorItem: null
   property var hostWidget: null
@@ -68,6 +72,9 @@ Panel {
   property string fontActionStatus: ""
   property bool fontActionRunning: false
   property bool fontUndoAvailable: false
+  property bool fontActionNeedsAttention: false
+  property bool themeActionNeedsAttention: false
+  readonly property bool unlockApplyAvailable: false
   property bool globalApplyRunning: false
   property string globalApplyStatus: ""
   property var globalApplySteps: []
@@ -96,7 +103,7 @@ Panel {
     messages[kind] = "Applying selected " + kind + "…"
     root.appearanceActionMessages = messages
     root.appearanceActionRunning = true
-    appearanceActionProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py"))].concat(args)
+    appearanceActionProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py"))].concat(args)
     appearanceActionProcess.running = true
     return true
   }
@@ -114,6 +121,11 @@ Panel {
   }
 
   function launchUnlockCommand(args, expectedSlug, operation, fromGlobalApply) {
+    if (!root.unlockApplyAvailable) {
+      root.appearanceActionMessages = Object.assign({}, root.appearanceActionMessages,
+        { unlock: "Boot unlock is preview-only while boot rebuild verification is being repaired." })
+      return false
+    }
     if (root.appearanceActionRunning || root.fontActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning
         || (root.globalApplyRunning && !fromGlobalApply)) return false
     root.appearanceActionKind = "unlock"
@@ -125,7 +137,7 @@ Panel {
     messages.unlock = "Applying boot unlock design…"
     root.appearanceActionMessages = messages
     root.appearanceActionRunning = true
-    unlockApplyProcess.command = ["/usr/bin/omarchy-launch-floating-terminal-with-presentation", "/usr/bin/python3",
+    unlockApplyProcess.command = ["/usr/bin/omarchy-launch-floating-terminal-with-presentation", "/usr/bin/python3", "-B",
       localPath(Qt.resolvedUrl("controller.py"))].concat(args)
     unlockApplyProcess.running = true
     return true
@@ -168,7 +180,7 @@ Panel {
   }
 
   function refreshInventory() {
-    inventoryProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")), "inventory"]
+    inventoryProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "inventory"]
     inventoryProcess.running = true
   }
 
@@ -177,7 +189,7 @@ Panel {
         || (root.globalApplyRunning && !fromGlobalApply) || !root.selectedSystemFontId || !root.selectedTerminalFontId) return false
     root.fontActionStatus = "Applying the selected global font settings…"
     root.fontActionRunning = true
-    globalFontProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")),
+    globalFontProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")),
       "apply-global-fonts", root.selectedSystemFontId, String(root.selectedSystemSize),
       root.selectedTerminalFontId, String(root.selectedTerminalSize)]
     globalFontProcess.running = true
@@ -192,6 +204,22 @@ Panel {
     return "Settings"
   }
 
+  function finishGlobalFontAction() {
+    if (!globalFontProcess.exitSeen || !globalFontProcess.stdoutFinished
+        || !globalFontProcess.stderrFinished || globalFontProcess.handled) return
+    globalFontProcess.handled = true
+    var result = FontActionResult.evaluate(globalFontProcess.outputText,
+      globalFontProcess.errorText, globalFontProcess.resultExitCode)
+    root.fontActionRunning = false
+    root.globalApplyStepSucceeded = result.success
+    root.fontActionStatus = result.message
+    root.fontActionNeedsAttention = !!result.needsAction
+    if (result.undoAvailable !== undefined) root.fontUndoAvailable = result.undoAvailable
+    if (result.refreshInventory) { root.inventoryLoaded = false; root.refreshInventory() }
+    if (root.globalApplyRunning && root.globalApplyCurrentStep === "fonts")
+      Qt.callLater(function() { root.finishGlobalApplyStep(result.success, result.message) })
+  }
+
   function applyAllSelectedSettings() {
     if (root.globalApplyRunning || root.appearanceActionRunning || root.fontActionRunning
         || root.manualAppActionRunning || root.manualAuditClearRunning) return
@@ -201,7 +229,7 @@ Panel {
       return
     }
     root.globalApplySteps = ["theme", "fonts", "background"]
-    if (root.unlockSelectionChanged && root.selectedUnlockId) root.globalApplySteps.push("unlock")
+    if (root.unlockApplyAvailable && root.unlockSelectionChanged && root.selectedUnlockId) root.globalApplySteps.push("unlock")
     root.globalApplyStepIndex = 0
     root.globalApplyRunning = true
     root.globalApplyStatus = ""
@@ -215,7 +243,9 @@ Panel {
       root.globalApplyRunning = false
       root.globalApplyStatus = includedUnlock
         ? "The selected theme, fonts, background, and boot unlock design were applied."
-        : "Theme, fonts, and background were applied. Boot unlock was left unchanged."
+        : ((root.fontActionNeedsAttention || root.themeActionNeedsAttention)
+            ? "Settings saved. Some applications need attention; see the results above. Boot unlock was not applied."
+            : "Settings saved and configuration read back. Application rendering still needs checking. Boot unlock was not applied.")
       return
     }
     var step = root.globalApplySteps[root.globalApplyStepIndex]
@@ -301,7 +331,7 @@ Panel {
     if (root.fontActionRunning || root.appearanceActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning || root.globalApplyRunning) return
     root.fontActionStatus = "Restoring the previous global font settings…"
     root.fontActionRunning = true
-    globalFontProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")), "rollback-global-fonts"]
+    globalFontProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "rollback-global-fonts"]
     globalFontProcess.running = true
   }
 
@@ -309,14 +339,14 @@ Panel {
     if (root.manualAppActionRunning || root.fontActionRunning || root.appearanceActionRunning || root.globalApplyRunning || root.manualAppQuery.trim().length < 2) return
     manualAppStatus = "Auditing the entered app and checking verified shared font controls…"
     manualAppActionRunning = true
-    manualAppProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")), "audit-app", root.manualAppQuery.trim()]
+    manualAppProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "audit-app", root.manualAppQuery.trim()]
     manualAppProcess.running = true
   }
 
   function clearManualAudit() {
     if (root.manualAuditClearRunning || root.manualAppActionRunning || root.fontActionRunning || root.appearanceActionRunning || root.globalApplyRunning) return
     root.manualAuditClearRunning = true
-    manualAuditClearProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")), "clear-manual-app-audit"]
+    manualAuditClearProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "clear-manual-app-audit"]
     manualAuditClearProcess.running = true
   }
 
@@ -341,7 +371,7 @@ Panel {
     }
     appearanceAuditStatus = "Reading current font settings, active theme, background, and Plymouth unlock image…"
     appearanceAuditRunning = true
-    appearanceAuditProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")), "audit-appearance", JSON.stringify(expected)]
+    appearanceAuditProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "audit-appearance", JSON.stringify(expected)]
     appearanceAuditProcess.running = true
   }
 
@@ -411,9 +441,9 @@ Panel {
       }
 
       if (!inventoryLoaded) {
-        selectedSystemFontId = (data.preferences && data.preferences.systemFontId) || idFor(fonts, "Aileron")
+        selectedSystemFontId = (data.preferences && data.preferences.systemFontId) || (fonts.length ? fonts[0].id : "")
         selectedTerminalFontId = (data.preferences && data.preferences.terminalFontId)
-          || idFor(fonts, "Office Code Pro")
+          || (fonts.length ? fonts[0].id : "")
         if (data.preferences && Number.isInteger(data.preferences.systemFontSizePt)
             && data.preferences.systemFontSizePt >= 6 && data.preferences.systemFontSizePt <= 48)
           selectedSystemSize = data.preferences.systemFontSizePt
@@ -421,16 +451,22 @@ Panel {
             && data.preferences.terminalFontSizePt >= 6 && data.preferences.terminalFontSizePt <= 48)
           selectedTerminalSize = data.preferences.terminalFontSizePt
         selectedThemeMode = "automatic"
-        selectedLightThemeId = idFor(themes, "dracula-pro-alucard")
-        selectedDarkThemeId = idFor(themes, "dracula-pro-van-helsing")
-        var preferredUnlock = unlockDesigns.find(function(entry) { return entry.name === "dracula-pro-van-helsing" })
-        selectedUnlockId = preferredUnlock ? preferredUnlock.id : ""
-        selectedUnlockPreview = preferredUnlock ? preferredUnlock.preview : ""
-        var preferredBackground = backgrounds.find(function(entry) {
-          return String(entry.source).endsWith("/Documents/Fonts_Icons_Wallpaper/Backgrounds/1333929.jpeg")
-        })
-        selectedBackgroundId = preferredBackground ? preferredBackground.id : idFor(backgrounds, "1333929.jpeg")
-        selectedIconId = idFor(icons, "Tela-circle-dracula-dark-van-helsing")
+        var savedTheme = data.desiredAppearance && data.desiredAppearance.theme
+        if (savedTheme) {
+          selectedThemeMode = savedTheme.mode
+          selectedLightThemeId = idFor(themes, savedTheme.light)
+          selectedDarkThemeId = idFor(themes, savedTheme.dark)
+        } else {
+          var activeTheme = (appearanceActionStatuses.theme || {}).observedValue
+          selectedLightThemeId = idFor(themes, activeTheme) || (themes.length ? themes[0].id : "")
+          selectedDarkThemeId = selectedLightThemeId
+        }
+        selectedUnlockId = ""
+        selectedUnlockPreview = ""
+        var activeBackground = (appearanceActionStatuses.background || {}).observedValue
+        var preferredBackground = backgrounds.find(function(entry) { return entry.source === activeBackground })
+        selectedBackgroundId = preferredBackground ? preferredBackground.id : (backgrounds.length ? backgrounds[0].id : "")
+        selectedIconId = icons.length ? icons[0].id : ""
         inventoryLoaded = true
       }
     } catch (e) {
@@ -466,6 +502,30 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
 
+      Controls.Pane {
+        anchors.fill: parent
+        padding: 0
+        background: null
+        palette.window: root.popupBackground
+        palette.base: root.popupBackground
+        palette.alternateBase: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.06))
+        palette.button: root.popupBackground
+        palette.windowText: root.popupForeground
+        palette.text: root.popupForeground
+        palette.buttonText: root.popupForeground
+        palette.placeholderText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.75))
+        palette.brightText: root.popupBackground
+        palette.highlight: root.popupForeground
+        palette.highlightedText: root.popupBackground
+        palette.light: Qt.lighter(root.popupBackground, 1.1)
+        palette.midlight: Qt.lighter(root.popupBackground, 1.05)
+        palette.mid: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.3))
+        palette.dark: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.5))
+        palette.shadow: root.popupForeground
+        palette.disabled.windowText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+        palette.disabled.text: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+        palette.disabled.buttonText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+
       Flickable {
         anchors.fill: parent
         contentWidth: width
@@ -487,7 +547,7 @@ Panel {
             Text {
               Layout.fillWidth: true
               text: "Set your system-wide look and feel in one location"
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: Math.round(Style.font.heading * 1.25)
               font.weight: Font.DemiBold
@@ -510,10 +570,10 @@ Panel {
             columnSpacing: 18
             rowSpacing: 10
 
-            PanelSectionHeader { text: "FONTS"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
+            PanelSectionHeader { foreground: root.popupForeground; text: "FONTS"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "System font family"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "System font family"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -527,7 +587,7 @@ Panel {
             }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "System font size"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "System font size"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -540,7 +600,7 @@ Panel {
             }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Terminal font family"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Terminal font family"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 id: terminalFontCombo
                 Layout.fillWidth: true
@@ -555,7 +615,7 @@ Panel {
             }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Terminal font size"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Terminal font size"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -572,7 +632,6 @@ Panel {
               text: "Only show monospaced fonts"
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
-              palette.windowText: root.barForeground
               checked: root.onlyMonospacedTerminalFonts
               onToggled: root.onlyMonospacedTerminalFonts = checked
             }
@@ -592,16 +651,16 @@ Panel {
               Layout.fillWidth: true
               visible: root.fontActionStatus !== ""
               text: root.fontActionStatus
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
             }
 
-            PanelSectionHeader { text: "THEME"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
+            PanelSectionHeader { foreground: root.popupForeground; text: "THEME"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Light theme"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Light theme"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -615,7 +674,7 @@ Panel {
             }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Mode"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Mode"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -628,7 +687,7 @@ Panel {
             }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Dark theme"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Dark theme"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -642,7 +701,7 @@ Panel {
             }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Boot unlock design"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Boot unlock preview"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 id: unlockCombo
                 Layout.fillWidth: true
@@ -677,7 +736,7 @@ Panel {
               Layout.fillWidth: true
               visible: root.appearanceActionMessages.theme !== ""
               text: root.appearanceActionMessages.theme
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -689,7 +748,7 @@ Panel {
                 text: "Undo unlock change"
                 font.family: root.fontFamily
                 font.pixelSize: root.controlFontPixelSize
-                enabled: !root.appearanceActionRunning && !root.fontActionRunning && !root.globalApplyRunning && !!(root.appearanceActionStatuses.unlock && root.appearanceActionStatuses.unlock.undoAvailable)
+                enabled: root.unlockApplyAvailable && !root.appearanceActionRunning && !root.fontActionRunning && !root.globalApplyRunning && !!(root.appearanceActionStatuses.unlock && root.appearanceActionStatuses.unlock.undoAvailable)
                 onClicked: root.undoAppearanceAction("unlock")
               }
             }
@@ -698,14 +757,14 @@ Panel {
               Layout.fillWidth: true
               visible: root.appearanceActionMessages.unlock !== ""
               text: root.appearanceActionMessages.unlock
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
             }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Icon theme"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Icon theme"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -717,10 +776,10 @@ Panel {
                 font.pixelSize: root.controlFontPixelSize
               }
             }
-            PanelSectionHeader { text: "DESKTOP APPEARANCE"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
+            PanelSectionHeader { foreground: root.popupForeground; text: "DESKTOP APPEARANCE"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
             ColumnLayout {
               Layout.fillWidth: true
-              Text { text: "Background"; color: root.barForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
+              Text { text: "Background"; color: root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize }
               Controls.ComboBox {
                 Layout.fillWidth: true
                 Layout.preferredHeight: root.selectorHeight
@@ -748,18 +807,18 @@ Panel {
               Layout.fillWidth: true
               visible: root.appearanceActionMessages.background !== ""
               text: root.appearanceActionMessages.background
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
             }
 
-            PanelSectionHeader { text: "APPLICATION AUDIT"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
+            PanelSectionHeader { foreground: root.popupForeground; text: "APPLICATION AUDIT"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
             Text {
               Layout.columnSpan: 2
               Layout.fillWidth: true
               text: "Being Linux we cannot guarantee that every application will be identified and added for Look_and_Feel changes. If you have a particular application you want added please entery it in the Audit app window and press RETURN."
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -797,7 +856,7 @@ Panel {
               Layout.fillWidth: true
               visible: root.manualAppStatus !== ""
               text: root.manualAppStatus
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -808,7 +867,7 @@ Panel {
               Layout.fillWidth: true
               visible: root.globalApplyStatus !== ""
               text: root.globalApplyStatus
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -834,6 +893,26 @@ Panel {
       }
 
       Controls.Dialog {
+        palette.window: root.popupBackground
+        palette.base: root.popupBackground
+        palette.alternateBase: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.06))
+        palette.button: root.popupBackground
+        palette.windowText: root.popupForeground
+        palette.text: root.popupForeground
+        palette.buttonText: root.popupForeground
+        palette.placeholderText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.75))
+        palette.brightText: root.popupBackground
+        palette.highlight: root.popupForeground
+        palette.highlightedText: root.popupBackground
+        palette.light: Qt.lighter(root.popupBackground, 1.1)
+        palette.midlight: Qt.lighter(root.popupBackground, 1.05)
+        palette.mid: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.3))
+        palette.dark: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.5))
+        palette.shadow: root.popupForeground
+        palette.disabled.windowText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+        palette.disabled.text: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+        palette.disabled.buttonText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+
         id: unlockPreviewDialog
         title: "Boot unlock preview"
         modal: true
@@ -850,6 +929,26 @@ Panel {
       }
 
       Controls.Dialog {
+        palette.window: root.popupBackground
+        palette.base: root.popupBackground
+        palette.alternateBase: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.06))
+        palette.button: root.popupBackground
+        palette.windowText: root.popupForeground
+        palette.text: root.popupForeground
+        palette.buttonText: root.popupForeground
+        palette.placeholderText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.75))
+        palette.brightText: root.popupBackground
+        palette.highlight: root.popupForeground
+        palette.highlightedText: root.popupBackground
+        palette.light: Qt.lighter(root.popupBackground, 1.1)
+        palette.midlight: Qt.lighter(root.popupBackground, 1.05)
+        palette.mid: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.3))
+        palette.dark: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.5))
+        palette.shadow: root.popupForeground
+        palette.disabled.windowText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+        palette.disabled.text: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+        palette.disabled.buttonText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
+
         id: helpDialog
         title: "Look & Feel help"
         modal: true
@@ -865,15 +964,15 @@ Panel {
             Text {
               width: parent.width
               text: "APPLY"
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               font.weight: Font.DemiBold
             }
             Text {
               width: parent.width
-              text: "The APPLY button at the bottom applies theme, fonts, and background in that order, followed by boot unlock only if you deliberately choose a design during this panel session. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Icon theme selection is not applied."
-              color: root.barForeground
+              text: "The APPLY button at the bottom applies theme, fonts, and background in that order. Boot unlock is currently preview-only and is not applied. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Icon theme selection is not applied."
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -881,15 +980,15 @@ Panel {
             Text {
               width: parent.width
               text: "FONTS"
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               font.weight: Font.DemiBold
             }
             Text {
               width: parent.width
-              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. The global APPLY uses both selections; Undo font change restores the previous plugin font transaction. Some applications need to be restarted. An unresolved or unsupported manual audit registration blocks font Apply until it is resolved or cleared."
-              color: root.barForeground
+              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. The global APPLY uses both selections; Undo font change restores the previous plugin font transaction. Supported running terminals receive a reload request. Some applications need to be reopened; pending actions are listed in the result. Saving configuration does not verify every application's rendered fonts. An unresolved or unsupported manual audit registration blocks font Apply until it is resolved or cleared."
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -897,31 +996,31 @@ Panel {
             Text {
               width: parent.width
               text: "THEME"
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               font.weight: Font.DemiBold
             }
             Text {
               width: parent.width
-              text: "Choose Automatic, Light all day, or Dark all day. When you press the global APPLY button in Automatic mode, the plugin chooses the Light or Dark theme for the current solar phase. Choose the Light and Dark themes, then apply. Undo theme change restores the previous detected theme."
-              color: root.barForeground
+              text: "Choose Automatic, Light all day, or Dark all day. While the plugin is loaded, Automatic follows the current solar phase and checks saved appearance settings every 15 seconds. Choose the Light and Dark themes, then apply. Undo theme change restores the previous detected theme."
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
             }
             Text {
               width: parent.width
-              text: "BOOT UNLOCK DESIGN"
-              color: root.barForeground
+              text: "BOOT UNLOCK PREVIEW"
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               font.weight: Font.DemiBold
             }
             Text {
               width: parent.width
-              text: "Choose a design to preview it. Global APPLY includes the design only after you deliberately change this selection during the panel session. Applying it updates Omarchy's Plymouth/SDDM artwork and rebuilds the initramfs; on systems using Limine integration it can also update boot entries. Undo unlock change reapplies the previous detected design, without guaranteeing restoration of boot files or entries."
-              color: root.barForeground
+              text: "Choose a design to preview it. Unlock Apply and Undo are temporarily disabled while boot rebuild verification is being repaired. Global APPLY does not apply this selection. Previous unlock journals are preserved."
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -929,7 +1028,7 @@ Panel {
             Text {
               width: parent.width
               text: "BACKGROUND"
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               font.weight: Font.DemiBold
@@ -937,7 +1036,7 @@ Panel {
             Text {
               width: parent.width
               text: "Choose a background. The global APPLY button applies the selection; Undo background change restores the previous background."
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -945,7 +1044,7 @@ Panel {
             Text {
               width: parent.width
               text: "ICON THEME"
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               font.weight: Font.DemiBold
@@ -953,7 +1052,7 @@ Panel {
             Text {
               width: parent.width
               text: "Icon theme changes are not applied yet."
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
@@ -961,7 +1060,7 @@ Panel {
             Text {
               width: parent.width
               text: "APPLICATION AUDIT"
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               font.weight: Font.DemiBold
@@ -969,13 +1068,14 @@ Panel {
             Text {
               width: parent.width
               text: "Enter an application name, launcher, or package and press Return or select Audit app. The lookup searches separately from the automatic inventory. It can register verified shared GTK or supported terminal font surfaces for global font Apply; app-specific theme controls are not registered. Ambiguous or unsupported results block font Apply. Clear registrations deletes the saved manual audit registrations. Audit results omit application names."
-              color: root.barForeground
+              color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
               wrapMode: Text.Wrap
             }
           }
         }
+      }
       }
     }
   }
@@ -997,14 +1097,19 @@ Panel {
     }
   }
 
-  Process {
-    id: appearanceActionProcess
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
+  function finishAppearanceAction() {
+    if (appearanceActionProcess.handled || !appearanceActionProcess.exitSeen
+        || !appearanceActionProcess.stdoutFinished || !appearanceActionProcess.stderrFinished) return
+    appearanceActionProcess.handled = true
+    var code = appearanceActionProcess.resultExitCode
+    if (code === 0) {
       var kind = root.appearanceActionKind
       try {
-        var result = JSON.parse(String(text || "{}"))
-        root.globalApplyStepSucceeded = !!result.rolledBack || result.state === "already-current"
-          || (result.state === "committed" && !!result.readback)
+        var result = JSON.parse(String(appearanceActionProcess.outputText || "{}"))
+        root.globalApplyStepSucceeded = (typeof result.rolledBack === "string" && result.rolledBack.length > 0)
+          || (result.state === "already-current" && typeof result.after === "string" && result.after.length > 0)
+          || (result.state === "committed" && typeof result.readback === "string" && result.readback.length > 0)
+        if (!root.globalApplyStepSucceeded) throw new Error("Unrecognized appearance result")
         var message
         if (result.rolledBack) {
           if (kind === "theme") {
@@ -1031,15 +1136,27 @@ Panel {
             root.lastAppliedTheme = String(result.after || "")
             root.lastAppliedThemeSetThisSession = true
           }
-          message = "The selected " + kind + " is already active; no change was needed."
+          message = kind === "theme" && result.applicationTransaction
+            ? "The desktop theme was already active; application settings were reconciled."
+            : "The selected " + kind + " is already active; no change was needed."
         } else if (kind === "theme") {
           root.lastAppliedTheme = String(result.readback || "")
           root.lastAppliedThemeSetThisSession = true
-          message = "Applied and verified the selected theme."
+          message = "Desktop theme changed; application configuration was saved and read back."
         } else if (kind === "background") {
           message = "Applied and verified the selected background."
         } else {
           message = "Applied and verified the selected boot unlock design."
+        }
+        if (kind === "theme") {
+          var pending = (result.pendingApplications || []).slice()
+          var failedReloads = ((result.runtimeRefresh || {}).terminalReload || {}).failed || []
+          failedReloads.forEach(function(name) {
+            if (!pending.some(function(item) { return item.app === name && item.action === "reload" }))
+              pending.push({ app: name, action: "reload", reason: "Settings saved, but its running window could not be refreshed; reopen it." })
+          })
+          root.themeActionNeedsAttention = pending.length > 0
+          if (pending.length) message += " " + pending.map(function(item) { return item.app + ": " + item.reason }).join(" ")
         }
         var messages = Object.assign({}, root.appearanceActionMessages)
         messages[kind] = message
@@ -1053,29 +1170,53 @@ Panel {
         errors[kind] = "Appearance action completed, but its result could not be read."
         root.appearanceActionMessages = errors
       }
+    } else {
+      root.globalApplyStepSucceeded = false
+      var errors = Object.assign({}, root.appearanceActionMessages)
+      errors[root.appearanceActionKind] = appearanceActionProcess.errorText.trim()
+        || "Appearance action failed."
+      root.appearanceActionMessages = errors
+    }
+    root.appearanceActionRunning = false
+    if (root.globalApplyRunning && root.globalApplyCurrentStep === root.appearanceActionKind) {
+      var succeeded = code === 0 && root.globalApplyStepSucceeded
+      var detail = root.appearanceActionMessages[root.appearanceActionKind]
+      Qt.callLater(function() { root.finishGlobalApplyStep(succeeded, detail) })
+    }
+  }
+
+  Process {
+    id: appearanceActionProcess
+    property string outputText: ""
+    property string errorText: ""
+    property int resultExitCode: -1
+    property bool stdoutFinished: false
+    property bool stderrFinished: false
+    property bool exitSeen: false
+    property bool handled: false
+    onRunningChanged: if (running) {
+      outputText = ""
+      errorText = ""
+      resultExitCode = -1
+      stdoutFinished = false
+      stderrFinished = false
+      exitSeen = false
+      handled = false
+    }
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
+      appearanceActionProcess.outputText = String(text || "")
+      appearanceActionProcess.stdoutFinished = true
+      root.finishAppearanceAction()
     } }
     stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      if (String(text || "").trim()) {
-        root.globalApplyStepSucceeded = false
-        var errors = Object.assign({}, root.appearanceActionMessages)
-        errors[root.appearanceActionKind] = "The appearance action could not be completed."
-        root.appearanceActionMessages = errors
-      }
+      appearanceActionProcess.errorText = String(text || "")
+      appearanceActionProcess.stderrFinished = true
+      root.finishAppearanceAction()
     } }
     onExited: function(code) {
-      root.appearanceActionRunning = false
-      if (code !== 0) {
-        var kind = root.appearanceActionKind
-        var messages = Object.assign({}, root.appearanceActionMessages)
-        if (!messages[kind] || messages[kind].indexOf("failed") < 0)
-          messages[kind] = "Appearance action failed; see the plugin log for details."
-        root.appearanceActionMessages = messages
-      }
-      if (root.globalApplyRunning && root.globalApplyCurrentStep === root.appearanceActionKind) {
-        var stepSucceeded = code === 0 && root.globalApplyStepSucceeded
-        var stepDetail = root.appearanceActionMessages[root.appearanceActionKind]
-        Qt.callLater(function() { root.finishGlobalApplyStep(stepSucceeded, stepDetail) })
-      }
+      appearanceActionProcess.resultExitCode = code
+      appearanceActionProcess.exitSeen = true
+      root.finishAppearanceAction()
     }
   }
 
@@ -1128,7 +1269,7 @@ Panel {
       root.unlockStatusExitCode = 0
       root.unlockStatusPollHandled = false
       root.unlockStatusProcessExited = false
-      unlockStatusProcess.command = ["/usr/bin/python3", localPath(Qt.resolvedUrl("controller.py")),
+      unlockStatusProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")),
         "appearance-action-status", "unlock"]
       unlockStatusProcess.running = true
     }
@@ -1136,48 +1277,37 @@ Panel {
 
   Process {
     id: globalFontProcess
+    property string outputText: ""
+    property string errorText: ""
+    property int resultExitCode: -1
+    property bool stdoutFinished: false
+    property bool stderrFinished: false
+    property bool exitSeen: false
+    property bool handled: false
+    onRunningChanged: if (running) {
+      outputText = ""
+      errorText = ""
+      resultExitCode = -1
+      stdoutFinished = false
+      stderrFinished = false
+      exitSeen = false
+      handled = false
+    }
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
-      try {
-        var result = JSON.parse(String(text || "{}"))
-        if (result.blocked) {
-          root.globalApplyStepSucceeded = false
-          root.fontActionStatus = "Font Apply stopped: " + Number(result.unsupportedManualCount || 0)
-            + " manually audited control surface(s) lack a verified reversible adapter. Re-audit with a specific entry or clear the manual audit registry."
-        } else if (result.transaction) {
-          root.globalApplyStepSucceeded = true
-          root.fontUndoAvailable = true
-          root.fontActionStatus = "Applied the selected system font to GTK settings and Omarchy shell files, plus the terminal font to "
-            + result.terminalCount + " detected terminal configuration(s). Registered manual font surfaces included: "
-            + Number(result.registeredManualCount || 0) + ". Restart applications that do not reload fonts automatically."
-        } else if (result.rolledBack) {
-          root.globalApplyStepSucceeded = true
-          root.fontUndoAvailable = false
-          root.inventoryLoaded = false
-          root.refreshInventory()
-          root.fontActionStatus = "Restored the previous global font settings."
-        } else {
-          root.globalApplyStepSucceeded = false
-          root.fontActionStatus = "The global font action returned no result."
-        }
-      } catch (e) {
-        root.globalApplyStepSucceeded = false
-        root.fontActionStatus = "The global font action completed, but its result could not be read."
-      }
+      globalFontProcess.outputText = String(text || "")
+      globalFontProcess.stdoutFinished = true
+      root.finishGlobalFontAction()
     } }
     stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      if (String(text || "").trim()) {
-        root.globalApplyStepSucceeded = false
-        root.fontActionStatus = "The global font action could not be completed."
-      }
+      globalFontProcess.errorText = String(text || "")
+      globalFontProcess.stderrFinished = true
+      if (globalFontProcess.errorText.trim()) console.warn("Look and Feel font command:", globalFontProcess.errorText)
+      root.finishGlobalFontAction()
     } }
-    onRunningChanged: if (!running) root.fontActionRunning = false
     onExited: function(code) {
-      root.fontActionRunning = false
-      if (root.globalApplyRunning && root.globalApplyCurrentStep === "fonts") {
-        var stepSucceeded = code === 0 && root.globalApplyStepSucceeded
-        var stepDetail = root.fontActionStatus
-        Qt.callLater(function() { root.finishGlobalApplyStep(stepSucceeded, stepDetail) })
-      }
+      globalFontProcess.resultExitCode = code
+      globalFontProcess.exitSeen = true
+      root.finishGlobalFontAction()
     }
   }
 

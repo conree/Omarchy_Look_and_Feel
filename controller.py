@@ -18,9 +18,12 @@ from appearance_audit import audit_appearance
 from appearance_audit import _theme_mode_expected
 from appearance_actions import action_status, apply_action, rollback_action
 from global_font_actions import TERMINAL_COMMANDS, build_global_font_targets
+from app_font_actions import build_app_targets
+from browser_font_actions import build as build_browser_targets
+from terminal_reload import reload_terminals
 from manual_app_inspector import inspect_app
 from manual_app_registry import clear_registry as clear_manual_app_registry, register_audit_result, registry_status, validated_apply_status
-from transaction import TransactionError, apply_file_targets, has_committed_transaction, recover_pending, rollback_latest, transaction_status
+from transaction import FILE_TARGETS, TransactionError, apply_file_targets, has_committed_transaction, recover_pending, rollback_latest, transaction_status
 
 
 HOME = Path.home()
@@ -495,6 +498,8 @@ def selected_terminal_font_size() -> int | None:
 
 
 def inventory() -> dict[str, object]:
+    import appearance_policy
+    policy = appearance_policy.read()
     fonts = font_entries()
     font_applications = installed_font_applications()
     shell_fonts = shell_font_surfaces()
@@ -515,8 +520,16 @@ def inventory() -> dict[str, object]:
     for records in entries.values():
         for record in records:
             record["selectable"] = catalog_entry_eligible(record)
+    status = action_status()
+    saved_theme = appearance_policy.latest(appearance_policy.LABEL_THEME)
+    if any(row[2].get("label") == appearance_policy.LABEL_THEME for row in appearance_policy.records()):
+        status["theme"]["undoAvailable"] = saved_theme is not None
+    if saved_theme:
+        status["theme"]["undoAvailable"] = True
+        status["theme"]["previousValue"] = saved_theme[2]["appearanceContext"]["themeBefore"]
     return {
         "application_configs_modified": False,
+        "desiredAppearance": policy,
         "font_application_inventory": font_applications,
         "shell_font_surfaces": shell_fonts,
         "font_application_inventory_record": font_application_record_path,
@@ -546,7 +559,7 @@ def inventory() -> dict[str, object]:
             }
             for kind, records in entries.items()
         },
-        "appearance_action_status": action_status(),
+        "appearance_action_status": status,
         "catalog_sources": {
             "source_policy": "live canonical system and user locations; no plugin snapshot required",
             "themes": [str(path) for path in THEME_DIRS],
@@ -559,26 +572,8 @@ def inventory() -> dict[str, object]:
 
 
 def apply_selected_theme(mode: str, light_name: str, dark_name: str) -> dict[str, object]:
-    available = {
-        str(entry["name"]).casefold().replace(" ", "-")
-        for entry in theme_entries() if catalog_entry_eligible(entry)
-    }
-    light = light_name.casefold().replace(" ", "-")
-    dark = dark_name.casefold().replace(" ", "-")
-    if light not in available or dark not in available:
-        raise TransactionError("one of the selected themes is no longer installed")
-    if mode not in {"light", "dark", "automatic"}:
-        raise TransactionError("select Light, Dark, or Automatic theme mode")
-    selected, reason = _theme_mode_expected(mode, display_words(light), display_words(dark))
-    if not selected:
-        raise TransactionError(reason)
-    target = selected.casefold().replace(" ", "-")
-    manual_theme_unsupported = registry_status()["themeUnsupportedCount"]
-    result = apply_action("theme", target, available)
-    result["selectionReason"] = reason
-    result["automaticFutureSwitching"] = "not-scheduled"
-    result["manualThemeUnsupportedCount"] = manual_theme_unsupported
-    return result
+    from appearance_policy import apply_theme
+    return apply_theme(mode, light_name.casefold().replace(" ", "-"), dark_name.casefold().replace(" ", "-"))
 
 
 def apply_catalog_action(kind: str, entry_id: str) -> dict[str, object]:
@@ -642,7 +637,7 @@ def ghostty_font_target(font_id: str, font_name: str, font_size: int = 12) -> di
     }
 
 
-def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: str, terminal_size: int) -> dict[str, object]:
+def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: str, terminal_size: int, *, automatic=False) -> dict[str, object]:
     fonts = {str(entry["id"]): str(entry["name"]) for entry in font_entries()}
     system_family = fonts.get(system_font_id)
     terminal_family = fonts.get(terminal_font_id)
@@ -659,6 +654,12 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         if not shutil.which(adapter[0]):
             raise TransactionError("an installed terminal could not be matched to its font adapter executable")
     targets, terminal_count = build_global_font_targets(system_family, system_size, terminal_family, terminal_size, terminal_ids)
+    desktop_ids = {str(app.get("id", "")) for app in census.get("desktopApplications", []) if isinstance(app, dict)}
+    app_targets, pending = build_app_targets(system_family, system_size, terminal_family, terminal_size, desktop_ids)
+    targets.update(app_targets)
+    browser_targets, browser_pending = build_browser_targets(system_family, system_size, terminal_family, terminal_size, desktop_ids)
+    targets.update(browser_targets)
+    pending.extend(browser_pending)
     manual = validated_apply_status(set(targets))
     if manual["unsupportedCount"]:
         return {
@@ -666,9 +667,51 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
             "unsupportedManualCount": manual["unsupportedCount"],
             "registeredManualCount": manual["registeredCount"],
         }
-    transaction_id = apply_file_targets(targets, label="Global font settings")
+    import appearance_policy as policy
+    import desktop_fonts
+    values = {"font-name": f"{system_family} {system_size}",
+              "document-font-name": f"{system_family} {system_size}",
+              "monospace-font-name": f"{terminal_family} {terminal_size}"}
+    parent = policy.latest(policy.LABEL_FONTS) if automatic else None
+    if automatic:
+        if parent is None:
+            raise TransactionError("saved fonts have no original Apply transaction")
+        targets = policy.changed_targets(targets)
+        if "brave-default-preferences" in targets:
+            del targets["brave-default-preferences"]
+            pending.append({"app": "Brave", "action": "apply-when-closed", "reason": "Close Brave and press Apply to update its saved fonts. Its profile has no application-respected external writer lock."})
+        snapshot = desktop_fonts.capture(values)
+        desktop_changed = any(row["effectiveBefore"] != row["after"] for row in snapshot)
+        if desktop_changed and not targets:
+            # A stable harmless target lets the existing journal carry a
+            # GSettings-only repair without creating a new settings subsystem.
+            targets["global-font-selection"] = (HOME / FILE_TARGETS["global-font-selection"]).read_bytes()
+    else:
+        desktop_changed = True
+        targets["appearance-policy"] = policy.update("fonts", {"systemId": system_font_id, "systemSize": system_size,
+                                                                "terminalId": terminal_font_id, "terminalSize": terminal_size})
+    ownership = {
+        'wezterm-config': {'fonts'},
+        'appearance-policy': {'fonts'},
+        'gtk3-settings': {'Settings/gtk-font-name'},
+        'gtk4-settings': {'Settings/gtk-font-name'},
+        'qt5ct-settings': {'Fonts/general', 'Fonts/fixed'},
+        'qt6ct-settings': {'Fonts/general', 'Fonts/fixed'},
+        'typora-base-user-css': {'fonts'},
+    }
+    css_path = HOME / FILE_TARGETS['typora-base-user-css']
+    if css_path.is_file() and '/* Look & Feel font profile: preserve theme styling while sharing font roles. */' in css_path.read_text():
+        ownership['typora-base-user-css'].add('body')
+    transaction_id = apply_file_targets(targets, label="Automatic font reconciliation" if automatic else policy.LABEL_FONTS,
+                                        desktop_font_values=values if desktop_changed else None,
+                                        parent_transaction=parent[1].name if parent else None, owned_fields=ownership) if targets else None
+    from terminal_reload import reload_fonts
+    reload_status = reload_fonts(set(targets), retry=automatic)
     return {
         "transaction": transaction_id,
+        "desktopFontsVerified": True,
+        "terminalReload": reload_status,
+        "pendingApplications": pending,
         "targetCount": len(targets),
         "terminalCount": terminal_count,
         "registeredManualCount": manual["registeredCount"],
@@ -682,10 +725,36 @@ def audit_manual_app(query: str) -> dict[str, object]:
 
 
 def main(argv: list[str]) -> int:
+    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-catalog-action", "rollback-appearance", "reconcile"}
+    if not mutation:
+        return _main(argv)
+    import appearance_policy
+    try:
+        with appearance_policy.operation_lock():
+            from managed_preferences import AUTOMATIC
+            token = AUTOMATIC.set(argv == ["reconcile"])
+            try:
+                recover_pending()
+                appearance_policy.recover_theme_undos()
+                return _main(argv)
+            finally:
+                AUTOMATIC.reset(token)
+    except (TransactionError, OSError, ValueError, RuntimeError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+
+def _main(argv: list[str]) -> int:
+    if argv == ["reconcile"]:
+        import appearance_policy
+        json.dump(appearance_policy.reconcile(), sys.stdout, ensure_ascii=False, sort_keys=True)
+        sys.stdout.write("\n")
+        return 0
+
     if len(argv) == 5 and argv[0] == "apply-global-fonts":
         try:
             result = apply_global_fonts(argv[1], int(argv[2]), argv[3], int(argv[4]))
-        except (TransactionError, ValueError, OSError) as exc:
+        except (TransactionError, ValueError, OSError, RuntimeError) as exc:
             print(f"Global font Apply failed: {exc}", file=sys.stderr)
             return 1
         json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
@@ -693,8 +762,9 @@ def main(argv: list[str]) -> int:
         return 0
     if argv == ["rollback-global-fonts"]:
         try:
-            result = {"rolledBack": rollback_latest(label="Global font settings")}
-        except TransactionError as exc:
+            result = {"rolledBack": rollback_latest(label="Global font settings"),
+                      "terminalReload": reload_terminals({"ghostty-config", "kitty-config"})}
+        except (TransactionError, RuntimeError, OSError) as exc:
             print(f"Global font Undo failed: {exc}", file=sys.stderr)
             return 1
         json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
@@ -724,7 +794,11 @@ def main(argv: list[str]) -> int:
         return 0
     if len(argv) == 2 and argv[0] == "rollback-appearance":
         try:
-            result = rollback_action(argv[1])
+            if argv[1] == "theme":
+                from appearance_policy import undo_theme
+                result = undo_theme()
+            else:
+                result = rollback_action(argv[1])
         except (TransactionError, OSError, ValueError) as exc:
             print(f"Appearance Undo failed: {exc}", file=sys.stderr)
             return 1

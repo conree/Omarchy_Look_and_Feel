@@ -157,8 +157,12 @@ def _set_theme(value: str) -> None:
     if not re.fullmatch(r"[a-z0-9][a-z0-9_-]*", value):
         raise TransactionError("invalid Omarchy theme slug")
     env = os.environ.copy()
+    from theme_runtime import require_offline_support, refresh
+    require_offline_support(_omarchy_root())
     env["OMARCHY_THEME_SKIP_BACKGROUND"] = "1"
+    env["OMARCHY_THEME_HEADLESS"] = "1"
     _omarchy("theme", "set", value, env=env, timeout=240)
+    refresh()
 
 
 def _copy_background_backup(directory: Path, background: str) -> str:
@@ -265,13 +269,14 @@ def _unlock_state() -> str | None:
     return value
 
 
+UNLOCK_WRITE_BLOCKED = (
+    "Boot unlock is preview-only while boot rebuild verification is being repaired. "
+    "Unlock Apply, Undo, and automatic recovery are unavailable; saved journals are preserved."
+)
+
+
 def _set_unlock(value: str) -> None:
-    if value == "default":
-        _omarchy("plymouth", "reset", timeout=900)
-    elif re.fullmatch(r"[a-z0-9][a-z0-9_-]*", value):
-        _omarchy("plymouth", "set-by-theme", value, timeout=900)
-    else:
-        raise TransactionError("invalid Omarchy unlock design slug")
+    raise TransactionError(UNLOCK_WRITE_BLOCKED)
 
 
 HANDLERS: dict[str, tuple[Callable[[], str | None], Callable[[str], None]]] = {
@@ -344,6 +349,8 @@ def _recover_pending_locked(*, allow_unlock_recovery: bool = False) -> list[str]
 def apply_action(kind: str, target: str, allowed_targets: set[str]) -> dict[str, object]:
     if kind not in ACTION_KINDS:
         raise TransactionError(f"unknown appearance action: {kind}")
+    if kind == "unlock":
+        raise TransactionError(UNLOCK_WRITE_BLOCKED)
     if not isinstance(target, str) or target not in allowed_targets:
         raise TransactionError(f"selected {kind} is no longer available")
     directory = transactions_path()
@@ -462,6 +469,8 @@ def _prune_action_history(kind: str) -> None:
 def rollback_action(kind: str) -> dict[str, object]:
     if kind not in ACTION_KINDS:
         raise TransactionError(f"unknown appearance action: {kind}")
+    if kind == "unlock":
+        raise TransactionError(UNLOCK_WRITE_BLOCKED)
     with _locked(transactions_path()):
         _recover_pending_locked(allow_unlock_recovery=kind == "unlock")
         records = _records(kind)

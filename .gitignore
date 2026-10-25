@@ -1,2 +1,5 @@
 __pycache__/
 *.py[cod]
+
+# Private VM images, keys, owner-state fixtures, logs, screenshots and backups.
+/Testing/

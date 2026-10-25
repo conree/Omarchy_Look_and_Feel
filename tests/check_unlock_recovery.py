@@ -62,28 +62,35 @@ for pending_state in ('prepared', 'applying', 'rolling_back', 'recovery_required
                 assert all(path.read_bytes() == data for path, data in originals.items())
                 count += 1
 
-# Explicit unlock Apply retains the ability to recover its own unfinished work.
-with TemporaryDirectory(prefix='laf-explicit-unlock-') as tmp, ExitStack() as stack:
-    observed, setters = fixture(stack, tmp)
-    pending = seed('unlock', 'applying')
-    result = actions.apply_action('unlock', 'fresh', {'fresh'})
-    assert result['state'] == 'committed'
-    assert [call.args for call in setters['unlock'].call_args_list] == [('before',), ('fresh',)]
-    assert json.loads(pending.read_text())['state'] == 'rolled_back'
-    assert not setters['theme'].called and not setters['background'].called
-    count += 1
+# The temporary unlock gate must preserve journals without invoking any setter.
+for operation in ('apply', 'undo'):
+    for pending_state in ('prepared', 'applying', 'rolling_back', 'recovery_required', 'committed'):
+        with TemporaryDirectory(prefix='laf-unlock-gate-') as tmp, ExitStack() as stack:
+            observed, setters = fixture(stack, tmp)
+            journal = seed('unlock', pending_state)
+            original = journal.read_bytes()
+            try:
+                if operation == 'apply':
+                    actions.apply_action('unlock', 'fresh', {'fresh'})
+                else:
+                    actions.rollback_action('unlock')
+            except transaction.TransactionError as exc:
+                assert 'preview-only' in str(exc), str(exc)
+            else:
+                raise AssertionError('unlock write gate was bypassed')
+            assert all(not setter.called for setter in setters.values())
+            assert journal.read_bytes() == original
+            count += 1
 
-# Explicit unlock Undo can first recover a pending attempt, then undo the last
-# committed unlock action. Both setters here update an in-memory dictionary.
-with TemporaryDirectory(prefix='laf-explicit-unlock-undo-') as tmp, ExitStack() as stack:
-    observed, setters = fixture(stack, tmp)
-    committed = seed('unlock', 'committed', before='older', after='before')
-    pending = seed('unlock', 'applying')
-    result = actions.rollback_action('unlock')
-    assert [call.args for call in setters['unlock'].call_args_list] == [('before',), ('older',)]
-    assert json.loads(pending.read_text())['state'] == 'rolled_back'
-    assert json.loads(committed.read_text())['state'] == 'rolled_back'
-    assert not setters['theme'].called and not setters['background'].called
+# Direct setter calls are blocked too, before invoking any Omarchy command.
+with patch.object(actions, '_omarchy', side_effect=AssertionError('LIVE COMMAND FORBIDDEN')) as command:
+    try:
+        actions._set_unlock('default')
+    except transaction.TransactionError as exc:
+        assert 'preview-only' in str(exc)
+    else:
+        raise AssertionError('unlock setter gate was bypassed')
+    assert not command.called
     count += 1
 
 # Ordinary background recovery remains available when there is no pending unlock.

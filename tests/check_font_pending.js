@@ -1,0 +1,10 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('path');
+const context={};vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'..','FontActionResult.js'),'utf8'),context);
+let result=context.evaluate(JSON.stringify({transaction:'id',targetCount:12,desktopFontsVerified:true,pendingApplications:[{app:'Brave',reason:'Close and apply again'}],terminalReload:{requested:['ghostty'],failed:[]}}),'',0);
+assert(result.success && result.needsAction && result.message.includes('Brave: Close and apply again'));
+assert(result.message.includes('not automatically verified'));
+result=context.evaluate(JSON.stringify({transaction:'id',terminalReload:{requested:[],failed:['ghostty']}}),'',0);
+assert(result.success && result.needsAction && result.message.includes('reloads failed'));
+result=context.evaluate(JSON.stringify({rolledBack:'id',terminalReload:{requested:['ghostty'],failed:[]}}),'',0);
+assert(result.success && result.message.includes('Reload requested'));
+console.log('Pending-app and reload-failure messages preserve saved-vs-rendered distinction.');

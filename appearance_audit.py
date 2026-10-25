@@ -431,20 +431,22 @@ def audit_appearance(expected: dict[str, Any], app_inventory: dict[str, Any] | N
         css = _read_text(typora_path) or ""
         for selector, label, family in (
             (r"body\s*\{([^}]*)\}", "Typora document font family", system_family),
-            (r"#write\s*,\s*#write\s*\*\s*\{([^}]*)\}", "Typora writing canvas font family", terminal_family),
+            (r"#write\s*\{([^}]*)\}", "Typora writing canvas font family", system_family),
         ):
-            block = re.search(selector, css, re.IGNORECASE | re.DOTALL)
+            blocks = list(re.finditer(selector, css, re.IGNORECASE | re.DOTALL))
+            block = blocks[-1] if blocks else None
             family_match = re.search(r"font-family\s*:\s*['\"]?([^;'\"]+)", block.group(1), re.IGNORECASE) if block else None
             actual = family_match.group(1).strip() if family_match else None
             checks.append(_check("font", label, family, actual, f"{typora_path}: {selector}",
                                  pending_restart=False))
-        size_match = re.search(r"#write\s*,\s*#write\s*\*\s*\{([^}]*)\}", css, re.IGNORECASE | re.DOTALL)
+        size_blocks = list(re.finditer(r"#write\s*\{([^}]*)\}", css, re.IGNORECASE | re.DOTALL))
+        size_match = size_blocks[-1] if size_blocks else None
         size_value = re.search(r"font-size\s*:\s*([0-9.]+)\s*(pt|px)", size_match.group(1), re.IGNORECASE) if size_match else None
         actual_size = None
         if size_value:
             amount = float(size_value.group(1))
             actual_size = amount if size_value.group(2).casefold() == "pt" else amount * 0.75
-        checks.append(_check("font", "Typora writing canvas size (pt)", terminal_size, actual_size,
+        checks.append(_check("font", "Typora writing canvas size (pt)", system_size, actual_size,
                              f"{typora_path}: no explicit writing-canvas point size means app/theme default",
                              pending_restart=False))
 
@@ -490,7 +492,7 @@ def audit_appearance(expected: dict[str, Any], app_inventory: dict[str, Any] | N
         betterbird_pending_restart = _process_started_before(prefs_path, "betterbird", "betterbird-bin")
         for key, label, wanted in (
             ("font.name.sans-serif.x-western", "Betterbird message font family", system_family),
-            ("font.size.variable.x-western", "Betterbird variable font size (pt)", int(system_size)),
+            ("font.size.variable.x-western", "Betterbird variable font size (CSS px)", round(system_size * 96 / 72)),
             ("msgcompose.font_face", "Betterbird composition font family", system_family),
         ):
             check = _check("font", label, wanted, _gecko_pref(prefs_path, key), f"{evidence}: {key}",

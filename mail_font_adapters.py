@@ -119,3 +119,28 @@ def discover_mail_profiles() -> list[dict[str, str]]:
                 result["prefsPath"] = f"{candidates[0]['path']}/prefs.js"
         results.append(result)
     return results
+
+
+def writable_betterbird_profile() -> str | None:
+    """Require profile provenance from the actual installed Betterbird path."""
+    executable = shutil.which("betterbird")
+    if not executable:
+        return None
+    app_dir = Path(executable).resolve().parent
+    resolved = []
+    for item in discover_mail_profiles():
+        if item.get("name") != "Betterbird" or not item.get("prefsPath"):
+            continue
+        prefs = HOME / item["prefsPath"]
+        compatibility = prefs.parent / "compatibility.ini"
+        if compatibility.is_symlink() or not compatibility.is_file():
+            continue
+        ini = configparser.RawConfigParser(interpolation=None)
+        try:
+            ini.read(compatibility, encoding="utf-8")
+            last_app = ini.get("Compatibility", "LastAppDir", fallback="")
+            if last_app and Path(last_app).resolve() == app_dir:
+                resolved.append(item["prefsPath"])
+        except (OSError, configparser.Error):
+            continue
+    return resolved[0] if len(resolved) == 1 else None

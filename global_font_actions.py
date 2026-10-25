@@ -131,49 +131,11 @@ def _replace_kitty(text: str, family: str, size: int) -> str:
 
 
 def _replace_wezterm(text: str, family: str, size: int) -> str:
-    lines = text.splitlines()
-
-    def ensure_wezterm_binding() -> None:
-        binding = re.compile(r"^\s*(?:local\s+)?wezterm\s*=\s*require\s*(?:\(\s*)?['\"]wezterm['\"]")
-        if not any(binding.match(line) for line in lines):
-            lines.insert(0, 'local wezterm = require "wezterm"')
-
-    if not lines:
-        return "\n".join([
-            'local wezterm = require "wezterm"',
-            "local config = {}",
-            f'config.font = wezterm.font({_quoted(family)}, {{ weight = "Regular" }})',
-            f"config.font_size = {size}",
-            "return config",
-            "",
-        ])
-    ensure_wezterm_binding()
-    start = next((i for i, line in enumerate(lines) if re.match(r"\s*config\.font\s*=", line)), None)
-    if start is None:
-        if not any(re.match(r"\s*(local\s+)?config\s*=", line) for line in lines):
-            raise TransactionError("the terminal font config has an unsupported structure")
-        replacement = [f'config.font = wezterm.font({_quoted(family)}, {{ weight = "Regular" }})', f"config.font_size = {size}"]
-        return_index = next((i for i, line in enumerate(lines) if re.match(r"\s*return\s+config\b", line)), len(lines))
-        lines[return_index:return_index] = replacement
-    else:
-        end = start + 1
-        if "font_with_fallback" in lines[start]:
-            while end < len(lines) and lines[end].strip() != "})":
-                if re.match(r"\s*(config\.|return\s+config\b)", lines[end]):
-                    raise TransactionError("the terminal font table has an unsupported structure")
-                end += 1
-            if end >= len(lines):
-                raise TransactionError("the terminal font table has an unsupported structure")
-            end += 1
-        elif not re.search(r"wezterm\.font\s*\(", lines[start]):
-            raise TransactionError("the terminal font assignment has an unsupported structure")
-        lines[start:end] = [f'config.font = wezterm.font({_quoted(family)}, {{ weight = "Regular" }})']
-        size_line = next((i for i, line in enumerate(lines) if re.match(r"\s*config\.font_size\s*=", line)), None)
-        if size_line is None:
-            lines.insert(start + 1, f"config.font_size = {size}")
-        else:
-            lines[size_line] = f"config.font_size = {size}"
-    return "\n".join(lines).rstrip() + "\n"
+    from wezterm_blocks import fonts
+    try:
+        return fonts(text, family, size)
+    except ValueError as exc:
+        raise TransactionError(str(exc)) from exc
 
 
 def build_global_font_targets(system_family: str, system_size: int, terminal_family: str, terminal_size: int,
@@ -189,6 +151,30 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
     ):
         targets[target_id] = _replace_ini_value(_read(path, allow_missing=True), "Settings", "gtk-font-name", f"{system_family} {system_size}").encode()
 
+    # qtct stores QFont::toString values. Preserve all serialized attributes
+    # except family and point size, and leave every other INI key untouched.
+    from application_themes import ini
+    from managed_preferences import decode
+    for version in (5, 6):
+        target = f"qt{version}ct-settings"
+        path = HOME / FILE_TARGETS[target]
+        from qt_integration import active as qt_active
+        active = qt_active(version)
+        if not path.is_file() and not active:
+            continue
+        text = _read(path, allow_missing=True)
+        data = decode(target, text.encode())
+        for role, family, size in (("general", system_family, system_size), ("fixed", terminal_family, terminal_size)):
+            if any(char in family for char in ',\n\r'):
+                raise TransactionError("Qt font family cannot be represented without ambiguity")
+            original = data.get("Fonts/" + role, "").strip('"')
+            parts = original.split(',') if original else [family, str(size), '-1', '5', '50', '0', '0', '0', '0', '0']
+            if len(parts) < 2:
+                raise TransactionError("unsupported Qt font serialization")
+            parts[0], parts[1] = family, str(size)
+            text = ini(text, "Fonts", role, '"' + ','.join(parts) + '"')
+        targets[target] = text.encode()
+
     shell_font_path = CONFIG / "omarchy/shell-font.json"
     shell_font_text = _read(shell_font_path, allow_missing=True)
     try:
@@ -202,18 +188,20 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
     targets["omarchy-shell-font"] = (json.dumps(shell_font, indent=2, sort_keys=True) + "\n").encode()
 
     shell_style_path = CONFIG / "omarchy/shell.toml"
-    shell_style = _read(shell_style_path)
+    shell_style = _read(shell_style_path, allow_missing=True)
+    # The chooser uses points; Omarchy shell tokens use logical pixels.
+    shell_size = round(system_size * 96 / 72)
     lines = shell_style.splitlines()
     start = next((i for i, line in enumerate(lines) if line.strip() == "[font]"), None)
     if start is None:
-        lines.extend(["", "[font]", f"base-size = {system_size}"])
+        lines.extend(["", "[font]", f"base-size = {shell_size}"])
     else:
         end = next((i for i in range(start + 1, len(lines)) if re.match(r"\s*\[.+\]\s*$", lines[i])), len(lines))
         active = next((i for i in range(start + 1, end) if re.match(r"\s*base-size\s*=", lines[i])), None)
         if active is None:
-            lines.insert(end, f"base-size = {system_size}")
+            lines.insert(end, f"base-size = {shell_size}")
         else:
-            lines[active] = re.sub(r"^(\s*base-size\s*=\s*).*$", rf"\g<1>{system_size}", lines[active])
+            lines[active] = re.sub(r"^(\s*base-size\s*=\s*).*$", rf"\g<1>{shell_size}", lines[active])
     targets["omarchy-shell-style"] = ("\n".join(lines).rstrip() + "\n").encode()
 
     global_selection = {
@@ -248,6 +236,9 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
             raise TransactionError("an installed terminal could not be matched to its font adapter executable")
         if target_id in terminal_targets:
             continue
+        if target_id == "wezterm-config":
+            from transaction import require_wezterm_location
+            require_wezterm_location()
         config_path = HOME / FILE_TARGETS[target_id]
         if target_id == "ghostty-config":
             text = _read(config_path, allow_missing=True)
@@ -257,7 +248,14 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
                 lines.append(import_line)
             targets[target_id] = ("\n".join(lines).rstrip() + "\n").encode()
             escaped = terminal_family.replace("\\", "\\\\").replace('"', '\\"')
-            overlay = f'font-family = "{escaped}"\nfont-size = {terminal_size}\n'
+            # Ghostty accumulates font-family settings across imports. Reset
+            # the previous list before selecting the requested terminal font.
+            overlay = f'font-family = ""\nfont-family = "{escaped}"\nfont-size = {terminal_size}\n'
+            # A contrast floor keeps terminal input legible when a running
+            # program retains its old background during a light/dark switch.
+            existing_overlay = _read(HOME / FILE_TARGETS["ghostty-font-overlay"], allow_missing=True)
+            contrast = [float(value) for value in re.findall(r"(?m)^\s*minimum-contrast\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*$", text + "\n" + existing_overlay)]
+            overlay += f"minimum-contrast = {max([4.5, *contrast]):g}\n"
             targets["ghostty-font-overlay"] = overlay.encode()
         else:
             text = _read(config_path, allow_missing=True)

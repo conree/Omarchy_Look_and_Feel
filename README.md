@@ -2,102 +2,99 @@
 
 Omarchy bar plugin for the one-source-of-truth appearance project.
 
-## Current stage
+## Apply and automatic reconciliation
 
-The `0.1.0` source provides global appearance controls for system and terminal
-fonts and sizes, theme mode and Light/Dark themes, boot unlock design,
-background, and icon theme. Automatic mode calculates the current solar phase
-from Omarchy weather settings and the system time zone; future transitions are
-not scheduled yet. The panel shows no application names outside the missed-app
-audit input and includes a Help dialog.
+The plugin saves the chosen fonts and light/dark themes in one desired-state
+file: `~/.config/omarchy-look-and-feel/policy.json` (or its XDG equivalent).
+Apply generates configuration from the selected palette and detected application
+interfaces. No Alucard, Van Helsing, user name, or particular font is required.
+The bar checks saved choices every 15 seconds while loaded, repairs supported
+configuration drift, and follows the solar phase in Automatic mode. It does
+nothing to appearance until a choice has been applied. Background is applied
+separately; icon selection remains preview-only.
 
-This is a development checkpoint, not a validated release for live global
-Apply. Opening the panel and changing selections does not apply appearance
-settings, although startup saves an inventory record. Full Apply can run theme
-hooks, and boot unlock can rebuild boot images and update Limine entries on
-systems using `limine-mkinitcpio`. Undo does not guarantee restoration of all
-hook or boot-system side effects. See the
-[current handoff](Handoffs/HANDOFF.md) and
-[2026-10-24 session handoff](Handoffs/OMARCHY_LOOK_AND_FEEL_HANDOFF_2026-10-24.md)
-for the checks performed and remaining safety work.
+The panel runs Theme, Fonts, then Background. A failed step stops later steps;
+completed steps remain available to Undo. Pending application work is named.
+Saved configuration, requested reloads, and rendered appearance are separate
+results: a successful file write is never proof of what an application displays.
 
-An optional **Only show monospaced fonts** checkbox below the terminal font
-controls starts unchecked. Checking it filters the terminal menu by Fontconfig
-spacing metadata; unchecking it restores all families. The chosen font remains
-visible and selected until another is chosen, even if absent from the filtered
-menu. This display filter does not change saved preferences or restrict Apply.
+| Interface | What the plugin applies |
+| --- | --- |
+| GTK 3/4 and desktop settings | Font, light/dark preference, generated palette; competing appearance declarations in user GTK CSS are removed while layout is retained. |
+| Qt through qt5ct/qt6ct | System/fixed fonts and generated palette. Apply detects a selector shared by both installed integrations and saves one owned override in the standard Omarchy Hyprland Lua config. A fresh login activates it for all launchers. Qt 6 can inherit GTK colors; Qt 5 GTK integration alone does not supply the palette. |
+| Ghostty, Alacritty, Kitty, Foot, WezTerm | Detected terminal fonts; Omarchy terminal palettes plus a generated WezTerm override. Supported reloads preserve sessions. Foot color refresh uses only owned PTYs; font changes need new Foot windows. |
+| Omarchy shell | A shared runtime system-font binding, with point-to-pixel size conversion and restoration when font ownership ends. No separate shell-font plugin is required. |
+| Typora | System font for prose, terminal font for code, generated theme and user CSS conflict repair. Its native profile is activated once while closed; subsequent theme changes update the managed stylesheet. |
+| Betterbird | Selected profile's font preferences, with its native profile lock held. Ambiguous profiles remain pending. |
+| Brave | Default profile's standard/serif/sans/fixed font preferences while closed; conflicting unpacked theme-only launch flags can be removed. Enterprise policy is never rewritten. |
+| OnlyOffice | Reversible native-frame setting and launcher flag, avoiding its custom transparent frame. Apply requires closure when changing its native setting. |
 
-One bottom `APPLY` button runs theme, fonts, and background in that order.
-Boot unlock is appended only after the user changes the unlock selection during
-the current panel session; the loaded default alone never triggers a boot
-change. If `APPLY` follows a deliberate unlock selection, its final step runs
-Omarchy's Plymouth/SDDM update and rebuilds the initramfs; its installed Limine
-integration can also update boot entries. If a step fails,
-later steps stop and previously completed steps remain applied. The
-per-section Undo controls remain available. Icon theme is selection-only and
-is not included in `APPLY`.
+Application adapters ship with the plugin and derive values from the same saved
+choices. They are not host-specific scripts. Unknown application-owned controls,
+custom command-line configuration overrides, Flatpak/Snap-specific config paths,
+and unsupported schemas still need adapters; generic toolkit inheritance cannot
+force every application to comply. The inventory does not claim exhaustive app
+discovery. Manual audit registers only control surfaces it can verify.
 
-Global font Apply/Undo uses a journaled transaction for GTK 3/4 settings,
-Omarchy shell font settings, and detected terminal configurations with reviewed
-adapters. Foot client/server launchers share the Foot configuration, and Kitty's
-URL launcher shares the Kitty configuration; each detected launcher is checked
-against its executable and verified configuration adapter, while shared
-configurations are changed once. Terminal discovery is based on the audited
-launcher census. This is not yet universal application font coverage: manual
-audit persists verified shared GTK 3/4 and supported terminal font surfaces in
-a private registry.
-Global font Apply revalidates those registrations and blocks if any audited
-result is unsupported or unresolved. Unmodeled surfaces such as Qt or
-application-owned settings still need verified adapters. Manual audit does not
-register app-specific theme controls; global theme selection does not provide
-per-application theme adapters.
-`controller.py inventory` discovers theme/background catalogs, fontconfig
-families, and installed icon themes. Its best-effort census combines effective
-desktop launchers, pacman package records (including foreign packages),
-Flatpak/Snap applications, common AppImage locations, web-app launchers, and a
-curated set of CLI/TUI programs. Package provenance is not always recoverable:
-pacman records a local install but does not retain whether a foreign package
-came from yay, `pacman -U`, or another build/install path. The census is saved
-privately under XDG state and leaves unknown or unverified font controls marked
-for review. The inventory includes framework-classification coverage for
-discovered app candidates (visible launchers, curated CLI/TUI tools,
-Flatpak/Snap records, and discovered AppImages). It explicitly excludes package-only executables,
-services, hidden helpers, and apps absent from those sources, so it is not a
-claim of exhaustive installed-app discovery or successful font application.
-The read-only appearance audit compares selected values with saved font
-settings, active Omarchy theme files, wallpaper image content, and installed
-Plymouth artwork after appearance actions. It does not inspect rendered pixels,
-prove the plugin caused a value, or verify the next-boot initramfs. A separate
-manual audit searches the entered app name, launcher, executable, or package
-without adding that request to the automatic census. It reports generic
-framework and font-role findings; application names and record paths are not
-echoed in panel output.
+Qt integration detection uses PySide6 to read plugin metadata without loading the libraries. Both qt5ct and qt6ct must offer a common selector before the plugin changes the desktop integration. Unsupported/custom Lua configurations remain pending. The background timer cannot introduce this override: it needs an explicit Apply. Apply and Undo require a fresh login when the selector changes; existing processes keep their old environment. The plugin does not restart the session or change activation variables live.
 
-The theme, background, and unlock actions keep a durable journal and verify
-their resulting selected state. Theme Undo re-applies the previous Omarchy
-theme, which may rerun theme hooks; it cannot reverse arbitrary side effects
-from those hooks. Unlock Undo re-applies the previous detected design through
-Omarchy's Plymouth/SDDM commands and rebuilds the initramfs; readback verifies
-installed Plymouth artwork, not the image that will load at next boot. Unlock
-Undo is semantic and does not restore exact system files or guarantee
-preservation of Limine entries. Background Undo
-restores the prior resolved path. Automatic theme selection chooses for the
-current solar phase when `APPLY` runs; persistent transitions are not
-implemented.
+The transaction journal snapshots original data, records ownership of individual
+fields in shared GTK/Qt, policy, Typora and WezTerm files, and groups automatic
+repairs under the initiating Apply. Theme Undo preserves a later font choice;
+font Undo preserves a later theme choice. Unrelated application preferences and
+WezTerm Lua settings are retained. Unknown conflicting edits cause a refusal,
+not silent replacement. Interrupted operations recover from durable journals.
+New files may leave empty directories after Undo.
 
-The source of authority for the owner requirements is
-[`DESIGN_BRIEF.md`](DESIGN_BRIEF.md). The expanded, printable plan is
-`/home/si/Projects/Omarchy_Look_and_Feel.html`. Parent project entry points
-are in `/home/si/Projects/Omarchy_Plugins/`.
+Keep Brave, Typora and OnlyOffice closed until an explicit profile Apply or Undo finishes.
+Their closed-state checks do not provide application-respected exclusion against
+concurrent starts; periodic reconciliation never writes those offline profiles.
+Betterbird uses its native fcntl lock. A stale owned local PID lock is removed
+only after acquiring that lock, checking the dead local owner, and recording a
+private audit. Unknown or live locks are preserved.
+
+Theme generation requires an Omarchy version with the inspected headless branch.
+The plugin skips the normal post-theme hook chain and privileged browser-policy
+writer, then refreshes explicit desktop/session interfaces. Normal Hyprland
+reload still evaluates its usual configuration. Some Omarchy application retints
+outside these adapters are not invoked, including managed browser custom tint.
+Theme Undo re-applies the previous theme's desktop defaults; it does not restore
+independently customized pre-Apply theme GSettings. Font GSettings Undo does
+restore explicit versus unset values.
+
+Boot unlock remains preview-only. Apply, Undo, and automatic boot recovery are
+blocked in both UI and backend. Appearance reconciliation does not enable them.
+
+An optional **Only show monospaced fonts** filter uses Fontconfig metadata and
+retains the current selection. Inventory and preferences are stored under XDG
+user directories. No separate service or timer is installed: automatic repair
+and transitions run only while the plugin is loaded in the shell.
+
+This is still development software. Isolated fixtures and the stock/owner VM
+checks verify ownership, recovery, generated configuration and selected native
+GTK/Qt behavior; they do not establish visual correctness in every application.
+The source of owner requirements is [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md).
 
 ## Source files
 
 - `manifest.json`: Omarchy plugin declaration.
-- `BarWidget.qml`: bar entry and popup lifecycle.
+- `BarWidget.qml`: bar entry, popup lifecycle and guarded reconciliation timer.
+- `ShellFontBridge.qml`: one runtime font binding shared across monitors, released when the final widget leaves.
+- `appearance_policy.py`: desired state, serialized operations and grouped theme Undo.
+- `application_themes.py`: palette-driven toolkit and application adapters.
+- `managed_preferences.py`: per-field codecs and ownership-aware restoration.
+- `css_takeover.py`: syntax-aware CSS conflict repair preserving layout.
+- `wezterm_blocks.py`: separately owned Lua font/theme overrides; source is never executed by the adapter.
+- `theme_runtime.py`: capability-checked headless generation refresh.
 - `Panel.qml`: global appearance controls, built-in Help, the single `APPLY`
   action, Undo controls, and the missed-app audit workflow.
 - `controller.py`: application/catalog discovery, global font routes, and
   appearance Apply/Undo routes.
+- `FontActionResult.js`: combined command output/exit evaluation for font Apply and Undo.
+- `desktop_fonts.py`: journaled GSettings font values and exact unset-state restoration.
+- `terminal_reload.py`: supported reload requests that preserve terminal sessions.
+- `app_font_actions.py`: Typora CSS and closed-profile mail font edits.
+- `browser_font_actions.py`: closed default-profile browser font edits and per-key Undo.
 - `global_font_actions.py`: reversible GTK, Omarchy shell, and detected
   supported-terminal font target generation.
 - `appearance_audit.py`: read-only configuration and active-theme/Plymouth
@@ -116,12 +113,11 @@ are in `/home/si/Projects/Omarchy_Plugins/`.
   live Omarchy paths, the current wallpaper, and the selected personal
   wallpaper library. Icons remain selection-only.
 - `appearance_actions.py`: journaled apply/readback/undo for Omarchy theme,
-  background, and unlock selections. Theme and unlock undo are semantic
-  compensations because Omarchy commands update generated/runtime and system
+  background selections. Theme undo is a semantic
+  compensation because Omarchy commands update generated/runtime and system
   assets beyond a user-owned file snapshot.
 - `solar_schedule.py`: offline approximate local sunrise/sunset calculations
-  and next Light/Dark transition selection. No scheduler or apply adapter is
-  enabled yet.
+  and next Light/Dark transition selection, evaluated by reconciliation.
 - `catalog-entry.schema.json`: metadata contract for stable, read-only
   catalog entries. Discovery entries stay unselectable until provenance,
   license, and compatibility checks are complete.
@@ -171,16 +167,15 @@ established. OpenFont, Fontsource, and Font Library are discovery sources,
 with per-family license checks required. This catalog policy does not change
 fonts already installed or selected on desktop.
 
-## Next implementation work
+## Validation and remaining coverage
 
-1. Resolve the inventory entries marked for toolkit or app-specific review,
-   starting with source editors, Markdown apps, custom Qt/GTK apps, and active
-   Quickshell widgets. Then add reversible adapters by shared control surface.
-   Ghostty selection and Undo already pass the disposable-home check.
-2. Add persistent automatic Light/Dark scheduling after validating how it
-   coexists with Omarchy's own scheduler. Add global icon-theme Apply with
-   explicit readback and rollback semantics.
+Run the scripts in `tests/` from this source directory. The portable, terminal,
+application and browser suites create isolated homes. `check_native_qt.py` uses
+an offscreen native Qt widget; `check_stale_mail_lock.py` needs local socket-bind
+capability and is also run in the VMs. VM tooling and results belong under
+`Testing/Boot_VM_Lab/`; guest guards must remain enabled.
 
-Earlier development verified a Ghostty font transaction. The current single-
-`APPLY` panel flow has not been reviewed live or exercised against the owner's
-settings. Terminal and application coverage remain incomplete.
+Remaining coverage includes unsupported application-owned controls and profiles,
+full live visual testing across apps, global icon Apply, and repairing the gated
+boot-unlock implementation. Do not infer boot safety from appearance tests or
+claim every application's rendering has been verified.
