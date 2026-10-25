@@ -10,13 +10,13 @@ function production(name) {
 function fixture(failedStep) {
   const calls = [];
   const root = {icons: [{id: 'icon:installed', name: 'Installed'}], selectedIconId: '',
-    appearanceActionMessages: {theme: 'Keep theme result'}, inventoryLoaded: false,
+    appearanceActionMessages: {theme: 'Keep theme result'}, sectionResults: {}, inventoryLoaded: false,
     selectedSystemFontId: 'font:system', selectedTerminalFontId: 'font:terminal',
     selectedLightThemeId: 'theme:light', selectedDarkThemeId: 'theme:dark', selectedBackgroundId: 'background:test',
     unlockApplyAvailable: false, unlockSelectionChanged: true, selectedUnlockId: 'unlock:test'};
   const context = {root, Qt: {callLater: f => f()}};
   vm.createContext(context);
-  for (const name of ['adoptIconSelection', 'globalApplyStepName', 'applyAllSelectedSettings',
+  for (const name of ['setSectionResult', 'adoptIconSelection', 'globalApplyStepName', 'applyAllSelectedSettings',
                       'applyNextGlobalStep', 'finishGlobalApplyStep', 'applySelectedIcons', 'undoAppearanceAction']) {
     vm.runInContext(production(name), context);
     root[name] = context[name];

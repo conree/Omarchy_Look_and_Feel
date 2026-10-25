@@ -3,13 +3,19 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('p
 const panel=fs.readFileSync(path.join(__dirname,'../Panel.qml'),'utf8');
 const start=panel.indexOf('  function finishAppearanceAction()');
 const code=panel.slice(start,panel.indexOf('\n  Process {',start));
+const dependencies = ['setSectionResult', 'updatePending'].map(name => {
+ const at=panel.indexOf('  function '+name+'(');
+ return panel.slice(at,panel.indexOf('\n  function ',at+1));
+}).join('\n');
 const permutations=[['out','err','exit'],['out','exit','err'],['err','out','exit'],['err','exit','out'],['exit','out','err'],['exit','err','out']];
 function fixture(output) {
  const calls=[];
  const c={appearanceActionProcess:{handled:false,resultExitCode:0,outputText:JSON.stringify(output)},
  root:{appearanceActionKind:'theme',globalApplyRunning:true,globalApplyCurrentStep:'theme',appearanceActionMessages:{},
- themes:[],refreshInventory:()=>{},runAppearanceAudit:()=>{},finishGlobalApplyStep:(...args)=>calls.push(args)},Qt:{callLater:f=>f()}};
- vm.createContext(c);vm.runInContext(code,c);return [c,calls];
+ themes:[],sectionResults:{},pendingBySection:{fonts:[],theme:[]},refreshInventory:()=>{},runAppearanceAudit:()=>{},finishGlobalApplyStep:(...args)=>calls.push(args)},Qt:{callLater:f=>f()}};
+ vm.createContext(c);vm.runInContext(dependencies+'\n'+code,c);
+ for(const name of ['setSectionResult','updatePending']) c.root[name]=c[name];
+ return [c,calls];
 }
 for (const events of permutations) {
  const [c,calls]=fixture({state:'committed',readback:'test',pendingApplications:[],runtimeRefresh:{terminalReload:{failed:['ghostty']}}});

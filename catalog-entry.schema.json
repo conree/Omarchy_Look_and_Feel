@@ -20,7 +20,37 @@
         { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
       ]
     },
-    "preview": { "type": ["string", "null"], "minLength": 1 },
+    "preview": {
+      "oneOf": [
+        { "type": ["string", "null"], "minLength": 1 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["background", "foreground", "accent", "swatches", "mode"],
+          "properties": {
+            "background": { "type": "string", "pattern": "^#[0-9a-f]{6}$" },
+            "foreground": { "type": "string", "pattern": "^#[0-9a-f]{6}$" },
+            "accent": { "type": "string", "pattern": "^#[0-9a-f]{6}$" },
+            "swatches": {
+              "type": "array", "maxItems": 7, "uniqueItems": true,
+              "items": { "type": "string", "pattern": "^#[0-9a-f]{6}$" }
+            },
+            "mode": { "enum": ["light", "dark"] }
+          }
+        }
+      ]
+    },
+    "previewIcons": {
+      "type": "array", "maxItems": 3, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "source"],
+        "properties": {
+          "name": { "enum": ["folder", "text-x-generic", "preferences-system"] },
+          "source": { "type": "string", "pattern": "^/", "minLength": 2 }
+        }
+      }
+    },
     "license": { "type": ["string", "null"] },
     "licenseEvidence": { "type": ["string", "null"], "format": "uri" },
     "provenanceVerified": { "type": "boolean" },

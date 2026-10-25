@@ -5,6 +5,58 @@ remains a tested development candidate with explicit coverage limits. The bar
 incident described below was a release blocker; saved settings alone were not
 adequate evidence of successful rendering.
 
+## Latest update: EE Calc-inspired panel
+
+The owner approved implementing the visual redesign. The current panel has
+Appearance, Fonts and Applications tabs, a two-color header, theme-derived
+accents, outlined controls and a fixed Apply footer. It previews installed
+palettes, backgrounds, icon files and selected fonts. Results are concise with
+expandable details; Undo remains per section. Applications separates detected
+apps from pending work and includes search and the existing targeted audit.
+Boot artwork is collapsed and preview-only.
+
+Draft selections persist across tabs, reopening and catalog refresh while the
+plugin instance lives; a shell reload still discards unsaved drafts. Failed
+refreshes preserve usable catalogs/selections. Font Undo updates only restored
+font choices. "Last action"/"Last Apply" labels describe previous work, not an
+unapplied draft. The current-theme badge and accents follow observed theme state,
+including a read-only watch of Omarchy's theme-name file. Native Tab navigation
+scrolls focused controls into view; Escape first dismisses an open selector.
+
+Current runtime/test archive: SHA-256
+`ea7774d1c2d4e853b90545b6a8cc9b17dd767d3d9207c9ba3763ef0fa9006ec3`,
+61 files. Manifest: `Testing/Boot_VM_Lab/tools/design-release-runtime-files.json`.
+The backend appearance writers remain byte-identical to the earlier published
+Qt-safe source (`a067f0c`). The new `appearance_previews.py` reads bounded installed
+palette/icon data, follows icon inheritance and adds metadata to the inventory.
+
+Final acceptance exercised real four-step Apply, all tabs, normal and constrained
+sizes, footer bounds, previews, draft edits, refresh/reopen and exact Undo in the
+stock VM, with 30 captures. Appearance-settings/journal snapshots remained stable
+through post-Apply navigation. Undo had zero compared file differences; policy
+JSON was compared semantically, desktop settings/background were restored, and
+older journals were preserved. Instrumentation was removed. Five JS suites,
+17 panel interaction cases, actual Qt focus/contrast checks, actual Quickshell
+FileView changes and preview/catalog tests pass. Independent source and screenshot
+review is recorded alongside private `design-ui-ea7774d1c2d4-*` evidence.
+The prior backend/size checks below were not repeated or relabeled as new UI tests.
+
+Deployment uses `Testing/Boot_VM_Lab/tools/deploy_panel_design.py`: pinned clean
+base, source hashes, private backup, operation lock and atomic per-file writes.
+It does not invoke host appearance Apply. The installed symlink points at the reviewed checkout. A plugin rescan kept the
+old cached panel on this host, so the standard guarded `omarchy restart shell`
+was used after validating its existing Qt font records. The new design loaded;
+clock and plugin geometry remained visible (61 px clock, 34 px Look & Feel).
+No host appearance Apply was invoked. Deployment evidence and backup
+location are in `Testing/Boot_VM_Lab/results/design-release-deployment.json`.
+The owner VM retains the prior Qt-safe source; this visual redesign was tested
+in the stock guest. Neither guest has host disks passed through.
+
+Remaining acceptance is unchanged: host apps after a fresh login/reopen, other
+theme/font combinations, physical input across every control, and other hardware
+are not universally verified. Boot unlock remains disabled. The following
+sections preserve the earlier Qt-safe repair and backend evidence.
+
 ## Source, deployment and publication
 
 Repository and installed source: `/home/si/Projects/Omarchy_Plugins/Look_and_Feel`,
@@ -15,7 +67,7 @@ The user explicitly authorized this handoff, commit and push. The commit contain
 this document identifies the published source; verify its remote with Git rather
 than interpreting an archive hash as a Git commit.
 
-Final runtime/test archive: SHA-256
+Earlier Qt-safe runtime/test archive: SHA-256
 `d68c7bf132ec47801bbd8924f0cda7b30ef623a3105f32a0f2b7980ce87343ed`, 57 files.
 Private manifest: `Testing/Boot_VM_Lab/tools/release-qt-safe-runtime-files.json`.
 Documentation and source packaging are also part of the publication commit.
@@ -121,8 +173,8 @@ in place; enterprise policy is not overwritten.
 
 ## Validation and provenance
 
-See `RELEASE_VALIDATION.md` for versions, metrics and precise coverage. The final
-runtime has 21 test programs: 20 isolated host runs and the guest native mail-lock
+See `RELEASE_VALIDATION.md` for versions, metrics and precise coverage. The earlier
+Qt-safe d68c7b… runtime had 21 test programs: 20 isolated host runs and the guest native mail-lock
 check. Qt tests use actual Qt5/Qt6 widgets and text widths, not just string equality.
 Independent source review reran the affected native, transaction and integration
 suites and checked host repair evidence.
@@ -164,7 +216,7 @@ desired-state policy was excluded from that byte comparison. Records are
 matrix journal values supports reusing that earlier 108-case evidence for the
 final Qt-safe source, rather than claiming an identical serializer or a full rerun.
 
-The final archive passed fault injection of the exact malformed host Qt6 general
+The earlier Qt-safe d68c7b… archive passed fault injection of the exact malformed host Qt6 general
 and fixed records. Fixture insertion and the real production font Apply body ran
 under the production operation lock with normal dependency/recovery preflight,
 preventing the background timer from repairing the fixture first. A fresh shell
@@ -173,7 +225,7 @@ clock, workspaces and icons remained visible. A fresh Wayland widget launched
 through the real user manager confirmed weight 400 and stretch 100. Unsafe Undo
 refused before mutation: 32 file targets, 18 journal hashes and four typed desktop
 settings remained identical. Test instrumentation was removed and all 57 installed
-files again matched the final archive. The final guest native mail-lock check
+files again matched the final archive. That candidate’s guest native mail-lock check
 also passed. Independent review inspected source, nested snapshots and screenshot
 hashes. Evidence: `release-qt-cold-stock-*.json`, its restart screenshot and
 `release-qt-safe-mail-lock.json`. This is a real shell cold start, not a new full
@@ -195,7 +247,9 @@ all five terminals visually, but that does not prove every later size/theme in
 all running applications. Do not mark the whole plugin universally release-ready.
 Boot unlock remains an intentionally disabled feature.
 
-The lab lives under `Testing/Boot_VM_Lab`, stock/owner SSH ports 22440/22441.
+Earlier Qt-safe checkpoint lab state (superseded for the stock UI source by the
+latest update above): the lab lives under `Testing/Boot_VM_Lab`, stock/owner SSH
+ports 22440/22441.
 Use its existing guarded tooling; disks are VM files, never host disk passthrough.
 The owner VM's temporary monitor/probe setup has been restored. The stock VM's
 light/dark and cold-start instrumentation was removed and all 57 final archive

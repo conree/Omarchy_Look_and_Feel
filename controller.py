@@ -139,6 +139,7 @@ def themes() -> list[str]:
 
 
 def theme_entries() -> list[dict[str, object]]:
+    from appearance_previews import theme_preview
     entries = []
     for name in themes():
         sources = [str(base / name) for base in THEME_DIRS if (base / name).is_dir()]
@@ -151,6 +152,7 @@ def theme_entries() -> list[dict[str, object]]:
             "id": stable_id("theme", name), "kind": "theme", "name": name,
             "displayName": display_words(name),
             "source": sources, "license": None,
+            "preview": theme_preview(sources),
             "review": "omarchy-managed-theme" if palette_compatible else "missing-theme-palette",
             "licenseEvidence": None, "provenanceVerified": True,
             "compatibility": "verified" if palette_compatible else "pending", "developmentOnly": False,
@@ -217,12 +219,15 @@ def icon_themes() -> list[str]:
 
 
 def icon_entries() -> list[dict[str, object]]:
+    from appearance_previews import IconPreviews
+    previews = IconPreviews(ICON_DIRS)
     entries = []
     for name in icon_themes():
         sources = [str(base / name) for base in ICON_DIRS if (base / name / "index.theme").is_file()]
         entries.append({
             "id": stable_id("icon", name), "kind": "icon", "name": name,
             "displayName": display_words(name),
+            "previewIcons": previews.samples(name),
             "source": sources, "license": None, "review": "metadata-unverified",
             "licenseEvidence": None, "provenanceVerified": False,
             "compatibility": "not-required", "applyMethod": "installed-icon", "selectable": False,

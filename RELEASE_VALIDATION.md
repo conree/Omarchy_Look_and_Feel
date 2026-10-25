@@ -7,7 +7,14 @@ still needs owner acceptance; no host logout or application restart was forced.
 
 ## Candidate and environment
 
-Final runtime/test archive: SHA-256
+Current panel redesign runtime/test archive: SHA-256
+`ea7774d1c2d4e853b90545b6a8cc9b17dd767d3d9207c9ba3763ef0fa9006ec3`,
+61 files. Manifest: `Testing/Boot_VM_Lab/tools/design-release-runtime-files.json`.
+Backend appearance writers are unchanged from the earlier Qt-safe candidate.
+The controller adds read-only palette/icon preview metadata; panel state and
+presentation changes are covered separately below.
+
+Earlier Qt-safe runtime/test archive: SHA-256
 `d68c7bf132ec47801bbd8924f0cda7b30ef623a3105f32a0f2b7980ce87343ed`,
 57 files. The private manifest is
 `Testing/Boot_VM_Lab/tools/release-qt-safe-runtime-files.json`.
@@ -31,9 +38,53 @@ Real qt5ct/qt6ct packages were installed. Guest application probes ran on Waylan
 actual user-manager environment; isolated host Qt tests used offscreen widgets. These are disposable QEMU guests with file-backed
 disks, not host disk passthrough or a test of the owner's physical GPU/monitors.
 
+## Panel redesign acceptance
+
+The final design archive ran the real four-step Apply sequence in the stock VM
+in light and dark modes. Each mode produced 15 captures covering all three tabs,
+normal and constrained 640×560 panel sizes, scrolling to the actual bottom,
+unsaved font edits, tab changes, catalog refresh, reopening and unlock artwork
+preview. The fixed footer and enabled Apply button stayed within the panel.
+Installed wallpaper/icon samples loaded, font samples reported the requested
+families/sizes, the active-theme badge matched the observed theme file, and the
+18×18 checkbox had a visible outline with measured contrast above 3:1.
+
+All post-Apply navigation/preview captures retained an identical monitored
+appearance-settings and journal snapshot. Draft choices survived refresh and
+reopening. Undo restored compared file contents, modes and existence, desktop
+settings and background content, with zero differences. Policy JSON was compared
+semantically; older journal hashes were unchanged. The intentionally unsafe
+older font journal was not undone. Temporary QML instrumentation was removed
+and all 61 installed source/test files again matched the archive.
+
+Five JavaScript regression programs pass, including 17 production panel cases,
+all stdout/stderr/exit arrival orders, failures that stop later steps, pending
+application work, invalid refreshes, unrelated-draft preservation on Font Undo,
+and observed-theme changes without draft changes. The native Qt regression loads
+the actual controls, keyboard wrapper and focus helper: Tab/Shift-Tab, automatic
+scrolling, typing, selector navigation and popup-before-panel Escape all pass.
+Twelve actual Qt color cases meet 4.8:1 against their panel backgrounds. The real
+Quickshell FileView passes initial read, atomic replacement, invalid data,
+deletion and recreation in an isolated temporary home. Read-only palette/icon
+preview tests and the existing icon catalog tests pass. Qt 6 parses the panel.
+
+Independent reviewers checked production source, tests, screenshot hashes and
+rendered layout. The guest shell logs contained no detected plugin QML errors
+or binding warnings; unrelated stock warnings are retained in the evidence.
+VM GUI handlers were exercised programmatically. Native QTest delivered keyboard
+events in isolated fixtures; a physical mouse/keyboard session across every
+control and every owner's theme/font combination was not tested. These UI checks
+do not extend application support or prove all applications render the saved
+settings. New runtime assets come from installed themes; none are redistributed.
+
+Private evidence: `design-ui-ea7774d1c2d4-{read,logs,undo}-{light,dark}.json`
+and the corresponding 30 PNG captures in `Testing/Boot_VM_Lab/results`.
+The earlier backend and sizing evidence below retains its original archive scope.
+
 ## Checks completed
 
-- Twenty isolated Python/JavaScript test programs passed on the final runtime.
+- Twenty isolated Python/JavaScript test programs passed on the earlier Qt-safe
+  d68c7b… candidate.
   The native Gecko lock test also passed inside the guest. These cover file and
   typed GSettings transactions, grouped repair/Undo, dependency refusals,
   native Qt widget readback, app-profile ownership, UI completion ordering,
@@ -55,7 +106,7 @@ disks, not host disk passthrough or a test of the owner's physical GPU/monitors.
   comparison with Foot. Eight additional GTK/Ghostty captures with `GDK_SCALE=2`
   also passed. No arbitrary font spacing correction was introduced.
 
-The final archive passed fault injection of the exact malformed host Qt6 general
+The earlier Qt-safe d68c7b… archive passed fault injection of the exact malformed host Qt6 general
 and fixed records. Fixture insertion and the real production font Apply body ran
 under the production operation lock with normal dependency/recovery preflight,
 preventing the background timer from repairing the fixture first. A fresh shell
@@ -64,7 +115,7 @@ clock, workspaces and icons remained visible. A fresh Wayland widget launched
 through the real user manager confirmed weight 400 and stretch 100. Unsafe Undo
 refused before mutation: 32 file targets, 18 journal hashes and four typed desktop
 settings remained identical. Test instrumentation was removed and all 57 installed
-files again matched the final archive. The final guest native mail-lock check
+files again matched the final archive. That candidate’s guest native mail-lock check
 also passed. Independent review inspected source, nested snapshots and screenshot
 hashes. Evidence: `release-qt-cold-stock-*.json`, its restart screenshot and
 `release-qt-safe-mail-lock.json`. This is a real shell cold start, not a new full

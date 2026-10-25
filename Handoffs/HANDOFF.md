@@ -9,6 +9,10 @@ are implemented. Malformed Qt font validation prevents the restart-related
 invisible-bar failure; unsafe font Undo/recovery is refused. The final malformed-
 font VM cold-start test and independent review passed. The VM size matrix
 passes within its recorded scope.
+The EE Calc-inspired redesign is implemented: Appearance/Fonts/Applications tabs,
+installed-asset previews, fixed Apply footer, concise results, keyboard scrolling
+and preserved drafts. Its final light/dark VM run has 30 captures and exact Undo;
+the detailed handoff separates that archive from earlier backend/size evidence.
 Boot unlock remains blocked and preview-only. Host visual acceptance after
 fresh login is outstanding; no universal app or hardware claim is made.
 

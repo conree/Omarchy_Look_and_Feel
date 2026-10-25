@@ -13,7 +13,15 @@ and supported behavior; [PROJECT_STATUS.md](PROJECT_STATUS.md) records acceptanc
 The design brief contains owner requirements and explicitly dated history.
 Handoffs record operational continuity and are not design authority.
 
-The October 25 final runtime/test archive contains 57 files and has SHA-256
+The current EE Calc-inspired panel runtime/test archive contains 61 files:
+`ea7774d1c2d4e853b90545b6a8cc9b17dd767d3d9207c9ba3763ef0fa9006ec3`.
+Manifest: `Testing/Boot_VM_Lab/tools/design-release-runtime-files.json`.
+It adds tabbed controls, previews, truthful current-theme and result state,
+keyboard navigation, draft-preservation fixes and regressions. Backend appearance
+writers remain unchanged. Final light/dark GUI evidence uses this archive;
+earlier backend/sizing evidence is distinguished below and in the validation report.
+
+The earlier October 25 Qt-safe runtime/test archive contains 57 files and has SHA-256
 `d68c7bf132ec47801bbd8924f0cda7b30ef623a3105f32a0f2b7980ce87343ed`.
 Its private manifest is `Testing/Boot_VM_Lab/tools/release-qt-safe-runtime-files.json`.
 The rendered-size archive is

@@ -24,7 +24,7 @@ It checks available APIs and schemas, not application rendering or live IPC
 health. Optional `binutils` improves toolkit discovery through `readelf`.
 Application-specific packages are needed only for applications you actually use.
 
-Choose your fonts, themes and optional icons, then press Apply. If Qt integration
+Choose your fonts, themes and optional icons, then press **Apply changes**. If Qt integration
 needs activation, save your work, sign out and back in once, then reopen your
 applications. The plugin reports this requirement; it never restarts the desktop.
 Brave and other offline profiles must remain closed while their settings are
@@ -37,6 +37,33 @@ Update with `omarchy plugin update si.omarchy-look-and-feel`. Undo each owned
 appearance choice **before** disabling/removing the plugin if you want its prior
 settings restored. Disabling alone stops reconciliation and releases its shell
 font binding; it intentionally does not discard saved application preferences.
+
+## Using the panel
+
+The panel has three tabs, with one **Apply changes** button always available
+below the scrolling content:
+
+- **Appearance:** choose Automatic, Light or Dark mode, compare previews of the
+  installed light/dark palettes, and select a background and optional icon theme.
+  Background thumbnails and icon samples use your installed files. Boot artwork
+  is in a collapsed **Preview only** section; it is never included in Apply.
+- **Fonts:** compare samples of the selected system and terminal fonts at their
+  chosen sizes. The monospace filter belongs to the terminal selector. Samples
+  demonstrate the font in this panel; they do not verify another application.
+- **Applications:** review outstanding actions, search detected applications,
+  and audit a missing application. A detected application is not automatically
+  a supported or visually verified application.
+
+Switching tabs, reopening the panel and refreshing the catalog preserve drafts
+while the plugin instance remains loaded. Drafts are not saved across a shell
+restart. **Apply changes** uses selections from all three tabs. Section results
+describe the last action; expand **Details** for the full result. Undo remains
+separate for themes, fonts, backgrounds and icons. Font Undo refreshes the font
+choices without discarding unrelated drafts.
+
+The panel derives accents from the active palette, checks text contrast, and
+uses the desktop system font for its controls. Light and dark themes share the
+same layout; smaller panels stack the previews into a single column.
 
 ## Apply and automatic reconciliation
 
@@ -138,8 +165,10 @@ The source of owner requirements is [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md).
 - `css_takeover.py`: syntax-aware CSS conflict repair preserving layout.
 - `wezterm_blocks.py`: separately owned Lua font/theme overrides; source is never executed by the adapter.
 - `theme_runtime.py`: capability-checked headless generation refresh.
-- `Panel.qml`: global appearance controls, built-in Help, the single `APPLY`
-  action, Undo controls, and the missed-app audit workflow.
+- `Panel.qml`: tabbed appearance controls, previews, built-in Help, the single
+  **Apply changes** action, Undo controls, and the missed-app audit workflow.
+- `appearance_previews.py`: read-only palette previews and bounded installed-icon
+  sample resolution, including icon-theme inheritance.
 - `controller.py`: application/catalog discovery, global font routes, and
   appearance Apply/Undo routes.
 - `FontActionResult.js`: combined command output/exit evaluation for font Apply and Undo.

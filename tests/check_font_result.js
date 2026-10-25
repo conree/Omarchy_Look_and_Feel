@@ -15,6 +15,10 @@ assert(evaluate('', '', 42).message.includes('42'));
 assert(evaluate('', 'managed path component does not exist: /home/example/.config/missing', 1).message.includes('[settings path]'));
 const panel = fs.readFileSync(path.join(base, 'Panel.qml'), 'utf8');
 const fn = panel.slice(panel.indexOf('  function finishGlobalFontAction()'), panel.indexOf('  function applyAllSelectedSettings()'));
+const dependencies = ['setSectionResult', 'updatePending'].map(name => {
+  const at=panel.indexOf('  function '+name+'(');
+  return panel.slice(at,panel.indexOf('\n  function ',at+1));
+}).join('\n');
 const permutations = [['out','err','exit'],['out','exit','err'],['err','out','exit'],['err','exit','out'],['exit','out','err'],['exit','err','out']];
 for (const events of permutations) {
   let calls = [];
@@ -22,10 +26,12 @@ for (const events of permutations) {
     FontActionResult: evaluator,
     globalFontProcess: {outputText:'{"transaction":"ok"}',errorText:'warning',resultExitCode:0,handled:false},
     root: {globalApplyRunning:true, globalApplyCurrentStep:'fonts', fontActionRunning:true,
+      sectionResults:{},pendingBySection:{fonts:[],theme:[]},
       finishGlobalApplyStep: (success,detail)=>calls.push([success,detail])},
     Qt: {callLater: fn=>fn()}
   };
-  vm.createContext(context); vm.runInContext(fn, context);
+  vm.createContext(context); vm.runInContext(dependencies+'\n'+fn, context);
+  for(const name of ['setSectionResult','updatePending']) context.root[name]=context[name];
   for (const [i,event] of events.entries()) {
     context.globalFontProcess[{out:'stdoutFinished',err:'stderrFinished',exit:'exitSeen'}[event]]=true;
     context.finishGlobalFontAction();

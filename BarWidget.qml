@@ -12,6 +12,8 @@ BarWidget {
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
   property bool openRequested: false
   property string reconciliationMessage: ""
+  property var reconciliationPending: []
+  property bool reconciliationFailed: false
   readonly property string appearanceConfigDir: {
     var configured = Quickshell.env("XDG_CONFIG_HOME")
     return (configured && configured.charAt(0) === "/" ? configured : Quickshell.env("HOME") + "/.config") + "/omarchy-look-and-feel/"
@@ -72,14 +74,17 @@ BarWidget {
         || !reconcileProcess.stdoutFinished || !reconcileProcess.stderrFinished) return
     reconcileProcess.handled = true
     if (reconcileProcess.resultExitCode !== 0) {
+      root.reconciliationFailed = true
       root.reconciliationMessage = reconcileProcess.errorText.trim() || "The appearance check failed."
       return
     }
     try {
       var result = JSON.parse(reconcileProcess.outputText)
       if (result.schemaVersion !== 1 || !Array.isArray(result.pendingApplications)) throw new Error("Invalid reconciliation result")
+      root.reconciliationFailed = false
+      root.reconciliationPending = result.pendingApplications
       root.reconciliationMessage = result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join("\n")
-    } catch (e) { root.reconciliationMessage = "The appearance check returned an unreadable result." }
+    } catch (e) { root.reconciliationFailed = true; root.reconciliationMessage = "The appearance check returned an unreadable result." }
   }
 
   Process {
