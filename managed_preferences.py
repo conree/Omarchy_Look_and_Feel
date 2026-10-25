@@ -18,19 +18,20 @@ from contextvars import ContextVar
 AUTOMATIC = ContextVar("automatic_appearance_operation", default=False)
 
 FIELDS = {
+    'fontconfig-monospace': {'monospace-rule'},
     "hypr-qt-integration": {"integration"},
     'wezterm-config': {'fonts', 'theme'},
     'typora-base-user-css': {'body', 'fonts'},
     'typora-profile': {'theme', 'darkTheme', 'useSeparateDarkTheme'},
-    'appearance-policy': {'fonts', 'theme', 'background'},
+    'appearance-policy': {'fonts', 'theme', 'background', 'icons'},
 }
 INI_FIELDS = {
     'wezterm-config': {'fonts', 'theme'},
     "onlyoffice-settings": {"General/titlebar"},
-    'gtk3-settings': {'Settings/gtk-font-name', 'Settings/gtk-theme-name', 'Settings/gtk-application-prefer-dark-theme'},
-    'gtk4-settings': {'Settings/gtk-font-name', 'Settings/gtk-theme-name', 'Settings/gtk-application-prefer-dark-theme'},
-    'qt5ct-settings': {'Fonts/general', 'Fonts/fixed', 'Appearance/custom_palette', 'Appearance/color_scheme_path'},
-    'qt6ct-settings': {'Fonts/general', 'Fonts/fixed', 'Appearance/custom_palette', 'Appearance/color_scheme_path'},
+    'gtk3-settings': {'Settings/gtk-font-name', 'Settings/gtk-theme-name', 'Settings/gtk-application-prefer-dark-theme', 'Settings/gtk-icon-theme-name'},
+    'gtk4-settings': {'Settings/gtk-font-name', 'Settings/gtk-theme-name', 'Settings/gtk-application-prefer-dark-theme', 'Settings/gtk-icon-theme-name'},
+    'qt5ct-settings': {'Fonts/general', 'Fonts/fixed', 'Appearance/custom_palette', 'Appearance/color_scheme_path', 'Appearance/icon_theme'},
+    'qt6ct-settings': {'Fonts/general', 'Fonts/fixed', 'Appearance/custom_palette', 'Appearance/color_scheme_path', 'Appearance/icon_theme'},
 }
 FIELDS.update(INI_FIELDS)
 
@@ -85,6 +86,9 @@ def _unique(pairs):
 def decode(target, raw):
     if target not in FIELDS:
         raise ValueError('unknown preference codec')
+    if target == 'fontconfig-monospace':
+        from fontconfig_policy import decode as decode_fontconfig
+        return decode_fontconfig(raw.decode('utf-8'))
     if target == 'hypr-qt-integration':
         from qt_integration import decode as decode_qt
         return decode_qt(raw.decode('utf-8'))
@@ -118,6 +122,9 @@ def decode(target, raw):
 
 
 def encode(target, data):
+    if target == 'fontconfig-monospace':
+        from fontconfig_policy import encode as encode_fontconfig
+        return encode_fontconfig(data).encode('utf-8')
     if target == 'hypr-qt-integration':
         from qt_integration import encode as encode_qt
         return encode_qt(data).encode()
@@ -134,7 +141,7 @@ def encode(target, data):
     return raw.hex().encode('ascii') if target == 'typora-profile' else raw
 
 
-def edits(target, before, after):
+def edits(target, before, after, *, owned_fields=None):
     old = decode(target, before) if before is not None else {}
     if target == 'appearance-policy' and before is None:
         old = {'fonts': None, 'theme': None, 'background': None}
@@ -143,11 +150,25 @@ def edits(target, before, after):
     if target == 'wezterm-config' and before is None:
         old = {'fonts': None, 'theme': None}
     new = decode(target, after)
+    if target == 'fontconfig-monospace':
+        # Anchor the first Apply's rule even when it was already correct. A
+        # later automatic repair must not redefine Undo's baseline as the
+        # intervening external rule merely because the first Apply was a no-op.
+        return {'monospace-rule': {'before': [old['monospace-rule']] if 'monospace-rule' in old else [],
+                                  'after': [new['monospace-rule']]}}
     # Wrapped values distinguish an absent field from a JSON null.
-    return {key: {'before': [old[key]] if key in old else [],
-                  'after': [new[key]] if key in new else []}
-            for key in sorted(FIELDS[target])
-            if (key in old, old.get(key)) != (key in new, new.get(key))}
+    changes = {key: {'before': [old[key]] if key in old else [],
+                     'after': [new[key]] if key in new else []}
+               for key in sorted(FIELDS[target])
+               if (key in old, old.get(key)) != (key in new, new.get(key))}
+    if target in {'qt5ct-settings', 'qt6ct-settings'}:
+        # Fonts Apply owns its initial baseline even if it was already equal.
+        # Palette/icon operations must not acquire ownership of those fonts.
+        owner = FIELDS[target] if owned_fields is None else owned_fields
+        for key in {'Fonts/general', 'Fonts/fixed'} & owner:
+            changes.setdefault(key, {'before': [old[key]] if key in old else [],
+                                     'after': [new[key]] if key in new else []})
+    return changes
 
 
 def validate_edits(target, changes):
@@ -157,6 +178,11 @@ def validate_edits(target, changes):
         if (not isinstance(row, dict) or set(row) != {'before', 'after'}
                 or any(not isinstance(row[k], list) or len(row[k]) > 1 for k in row)):
             raise ValueError('invalid managed preference value')
+        if target == 'fontconfig-monospace':
+            from fontconfig_policy import validate_rules
+            for wrapped in row.values():
+                if wrapped:
+                    validate_rules(wrapped[0])
 
 
 def restore(target, current, changes):

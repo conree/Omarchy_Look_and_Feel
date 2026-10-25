@@ -1,20 +1,34 @@
 # Source of truth
 
-The authoritative working source is this Git repository:
-`/home/si/Projects/Omarchy_Plugins/Look_and_Feel`.
-The installed plugin is a symlink to this directory. Git commits identify
-published source; README describes behavior and PROJECT_STATUS records state.
-Handoffs are historical records, not alternate implementations.
+The authoritative source and publication target is
+`/home/si/Projects/Omarchy_Plugins/Look_and_Feel`, branch `main`, remote
+`https://github.com/conree/Omarchy_Look_and_Feel.git`.
+The owner's installed plugin at
+`/home/si/.config/omarchy/plugins/si.omarchy-look-and-feel` is a symlink to this
+repository. Other users receive their own plugin-manager checkout.
 
-Functional source in the October 24–25 validation is tied to local manifest
-`Testing/Boot_VM_Lab/tools/attention-candidate-files.json` and archive SHA-256
-`b9a35c8de98c2f7cac0fd53c1e2685f4c032ac2cfa562241ce506b02f27b0041`.
-The archive also contains a headless-browser Typora CSS experiment excluded
-from the final validation run and subsequently quarantined outside the source
-tests; that experiment is not published.
+Git commits identify published source. [README.md](README.md) defines installation
+and supported behavior; [PROJECT_STATUS.md](PROJECT_STATUS.md) records acceptance;
+[RELEASE_VALIDATION.md](RELEASE_VALIDATION.md) records test scope and provenance.
+The design brief contains owner requirements and explicitly dated history.
+Handoffs record operational continuity and are not design authority.
 
-`Testing/` contains ignored private VM evidence, snapshots, experiments and
-recovery material. It is not a second editable source tree or a release payload.
-Temporary staging directories under `/tmp` are superseded after deployment.
-Reusable regression tests are in `tests/`. VM procedures are in local
-`Testing/Boot_VM_Lab/tools`, separate from `Testing/Boot_VM_Lab/results`.
+The October 25 final runtime/test archive contains 57 files and has SHA-256
+`d68c7bf132ec47801bbd8924f0cda7b30ef623a3105f32a0f2b7980ce87343ed`.
+Its private manifest is `Testing/Boot_VM_Lab/tools/release-qt-safe-runtime-files.json`.
+The rendered-size archive is
+`6458b71d8f28e50fb2ba070c070a4bbd0d01dcf4595088149631278068bbf18b`.
+Subsequent changes add reopening guidance, Fontconfig Undo ownership, native Qt
+font validation/serialization, safe restore and activation guards. Non-Qt font
+rendering paths are unchanged; native Qt metrics supplement the earlier matrix.
+The preceding GUI archive is
+`3cd67d0404fe267d66dabad01837179a9105342357a439791cdd89d2bd5b08a3`.
+Earlier stock installer/login evidence used archive
+`6e814d374623cd79b30542ced02da4e20bab6d068397aec58b891248856ccdbe`.
+Use the validation report to distinguish those checks from final-runtime tests.
+
+`Testing/` is ignored private VM evidence, images, keys, screenshots, baselines
+and recovery material. It is not a release payload or alternate source tree.
+Temporary preparation under `/tmp` is superseded by the reviewed repository
+source after deployment. Do not substitute earlier October 24–25 attention
+archives for this candidate.

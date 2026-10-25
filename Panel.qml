@@ -93,7 +93,7 @@ Panel {
   property bool unlockStatusPollHandled: false
   property bool unlockStatusProcessExited: false
   property var appearanceActionStatuses: ({})
-  property var appearanceActionMessages: ({ theme: "", background: "", unlock: "" })
+  property var appearanceActionMessages: ({ theme: "", background: "", icons: "", unlock: "" })
 
   function runAppearanceAction(kind, args, fromGlobalApply) {
     if (root.appearanceActionRunning || root.fontActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning
@@ -113,6 +113,26 @@ Panel {
     return root.runAppearanceAction("theme", ["apply-theme", root.selectedThemeMode,
       root.catalogName(root.themes, root.selectedLightThemeId),
       root.catalogName(root.themes, root.selectedDarkThemeId)], fromGlobalApply)
+  }
+
+  function applySelectedIcons(fromGlobalApply) {
+    if (!root.selectedIconId) return false
+    return root.runAppearanceAction("icons", ["apply-catalog-action", "icons", root.selectedIconId], fromGlobalApply)
+  }
+
+  function adoptIconSelection(savedId, observedName, resetSelection) {
+    var requested = resetSelection ? String(savedId || "") : root.selectedIconId
+    if (resetSelection && !requested) {
+      var observed = root.icons.find(function(entry) { return entry.name === observedName })
+      requested = observed ? observed.id : ""
+    }
+    if (requested && !root.icons.some(function(entry) { return entry.id === requested })) {
+      root.selectedIconId = ""
+      root.appearanceActionMessages = Object.assign({}, root.appearanceActionMessages,
+        { icons: "The previous icon selection is unavailable. Choose an installed icon theme to include icons in Apply." })
+    } else {
+      root.selectedIconId = requested
+    }
   }
 
   function applySelectedBackground(fromGlobalApply) {
@@ -200,6 +220,7 @@ Panel {
     if (step === "fonts") return "Fonts"
     if (step === "theme") return "Theme"
     if (step === "background") return "Background"
+    if (step === "icons") return "Icons"
     if (step === "unlock") return "Boot unlock"
     return "Settings"
   }
@@ -229,6 +250,7 @@ Panel {
       return
     }
     root.globalApplySteps = ["theme", "fonts", "background"]
+    if (root.selectedIconId) root.globalApplySteps.push("icons")
     if (root.unlockApplyAvailable && root.unlockSelectionChanged && root.selectedUnlockId) root.globalApplySteps.push("unlock")
     root.globalApplyStepIndex = 0
     root.globalApplyRunning = true
@@ -257,6 +279,7 @@ Panel {
     if (step === "fonts") started = root.applyGlobalFonts(true)
     else if (step === "theme") started = root.applySelectedTheme(true)
     else if (step === "background") started = root.applySelectedBackground(true)
+    else if (step === "icons") started = root.applySelectedIcons(true)
     else if (step === "unlock") started = root.applySelectedUnlock(true)
     if (!started) root.finishGlobalApplyStep(false, "The selected settings could not be applied.")
   }
@@ -429,7 +452,8 @@ Panel {
         copy.label = entry.name + (collection ? " — " + collection : "")
         return copy
       })
-      icons = entries.icons || []
+      icons = (entries.icons || []).filter(function(entry) { return entry.selectable })
+      var resetIconSelection = !inventoryLoaded
       appearanceActionStatuses = data.appearance_action_status || ({})
       fontUndoAvailable = data.global_font_undo_available === true
       if (!lastAppliedThemeSetThisSession && appearanceActionStatuses.theme && appearanceActionStatuses.theme.expectedValue)
@@ -466,9 +490,10 @@ Panel {
         var activeBackground = (appearanceActionStatuses.background || {}).observedValue
         var preferredBackground = backgrounds.find(function(entry) { return entry.source === activeBackground })
         selectedBackgroundId = preferredBackground ? preferredBackground.id : (backgrounds.length ? backgrounds[0].id : "")
-        selectedIconId = icons.length ? icons[0].id : ""
         inventoryLoaded = true
       }
+      root.adoptIconSelection(data.desiredAppearance && data.desiredAppearance.icons,
+        (appearanceActionStatuses.icons || {}).observedValue, resetIconSelection)
     } catch (e) {
       fonts = []
       themes = []
@@ -775,6 +800,22 @@ Panel {
                 onActivated: function(index) { root.selectedIconId = root.icons[index].id }
                 font.pixelSize: root.controlFontPixelSize
               }
+              Controls.Button {
+                text: "Undo icon change"
+                font.family: root.fontFamily
+                font.pixelSize: root.controlFontPixelSize
+                enabled: !root.appearanceActionRunning && !root.fontActionRunning && !root.globalApplyRunning && !!(root.appearanceActionStatuses.icons && root.appearanceActionStatuses.icons.undoAvailable)
+                onClicked: root.undoAppearanceAction("icons")
+              }
+              Text {
+                Layout.fillWidth: true
+                text: root.appearanceActionMessages.icons || ""
+                visible: text.length > 0
+                color: root.popupForeground
+                font.family: root.fontFamily
+                font.pixelSize: root.controlFontPixelSize
+                wrapMode: Text.Wrap
+              }
             }
             PanelSectionHeader { foreground: root.popupForeground; text: "DESKTOP APPEARANCE"; fontFamily: root.fontFamily; Layout.columnSpan: 2 }
             ColumnLayout {
@@ -971,7 +1012,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "The APPLY button at the bottom applies theme, fonts, and background in that order. Boot unlock is currently preview-only and is not applied. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Icon theme selection is not applied."
+              text: "The APPLY button at the bottom applies theme, fonts, and background in that order. Boot unlock is currently preview-only and is not applied. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. The selected icon theme is applied after the background."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1051,7 +1092,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Icon theme changes are not applied yet."
+              text: "Icons use the selected installed theme across desktop, GTK and available Qt integrations. Undo icons restores the previous managed icon settings; unrelated font and palette edits are preserved. Applications with their own icon sets may not inherit desktop icons."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1127,6 +1168,9 @@ Panel {
           } else if (kind === "background") {
             var restoredBackground = root.backgrounds.find(function(entry) { return entry.source === result.restored })
             if (restoredBackground) root.selectedBackgroundId = restoredBackground.id
+          } else if (kind === "icons") {
+            var restoredIcon = root.icons.find(function(entry) { return entry.name === result.restored })
+            root.selectedIconId = restoredIcon ? restoredIcon.id : ""
           } else {
             var restoredUnlock = root.unlockDesigns.find(function(entry) { return String(entry.name).toLowerCase().replace(/_/g, "-") === String(result.restored || "").toLowerCase().replace(/_/g, "-") })
             if (restoredUnlock) root.selectedUnlockId = restoredUnlock.id
@@ -1143,6 +1187,8 @@ Panel {
           root.lastAppliedTheme = String(result.readback || "")
           root.lastAppliedThemeSetThisSession = true
           message = "Desktop theme changed; application configuration was saved and read back."
+        } else if (kind === "icons") {
+          message = "Icon settings saved and read back for desktop, GTK and available Qt integrations."
         } else if (kind === "background") {
           message = "Applied and verified the selected background."
         } else {

@@ -22,6 +22,23 @@ id=tx.apply_file_targets({'global-font-selection':b'new'},label=label,desktop_fo
 assert all(settings.get_string(k)==v for k,v in values.items())
 assert tx.rollback_latest(label=label)==id
 assert {k:desktop._user_value(settings,k) for k in desktop.KEYS}==original
+# Typed scaling ownership, including an upgrade from an older three-key Apply.
+settings.set_double('text-scaling-factor', 1.5); Gio.Settings.sync()
+parent=tx.apply_file_targets({'gtk3-settings':b'[Settings]\ngtk-font-name=Avenir Next 12\n'}, label='legacy-font-group', desktop_font_values=values)
+typed=dict(values, **{'text-scaling-factor':1.0})
+child_id=tx.apply_file_targets({'gtk3-settings':b'[Settings]\ngtk-font-name=Avenir Next 12\n'}, label='font-group-upgrade', parent_transaction=parent, desktop_font_values=typed)
+assert settings.get_double('text-scaling-factor') == 1.0
+tx.rollback_latest(label='legacy-font-group')
+assert settings.get_double('text-scaling-factor') == 1.5
+assert {k:desktop._user_value(settings,k) for k in desktop.KEYS}==original
+assert json.loads((tx.transactions_path()/child_id/'transaction.json').read_text())['state']=='rolled_back'
+settings.reset('text-scaling-factor'); Gio.Settings.sync()
+rows=desktop.capture(typed); desktop.apply(rows); desktop.restore(rows)
+assert desktop._user_value(settings,'text-scaling-factor') is None
+for invalid in (True, 0, -1, float('nan'), float('inf'), '1.0'):
+    try: desktop.capture(dict(typed, **{'text-scaling-factor': invalid}))
+    except RuntimeError: pass
+    else: raise AssertionError('invalid typed setting accepted')
 assert not target.exists()
 # Simulate failure immediately after the real settings write; all files/settings restore.
 real_apply=desktop.apply
@@ -45,6 +62,15 @@ assert json.loads((tx.transactions_path()/id/'transaction.json').read_text())['s
 settings.set_string('font-name',values['font-name']);Gio.Settings.sync()
 assert id in tx.recover_pending()
 assert {k:desktop._user_value(settings,k) for k in desktop.KEYS}==original
+# Missing infrastructure refuses before grouped Undo intent or any file write.
+identifier=tx.apply_file_targets({'global-font-selection':b'infrastructure'},label='missing-backend',desktop_font_values=values)
+journal_file=tx.transactions_path()/identifier/'transaction.json'; saved_journal=journal_file.read_bytes()
+with patch.object(desktop,'_settings',side_effect=ImportError('Gio missing')):
+    try: tx.rollback_latest(label='missing-backend')
+    except tx.TransactionError as exc: assert 'python-gobject' in str(exc)
+    else: raise AssertionError('missing settings backend accepted')
+assert journal_file.read_bytes()==saved_journal and target.read_bytes()==b'infrastructure'
+tx.rollback_latest(label='missing-backend')
 # An abruptly terminated writer must leave a recoverable journal.
 child='''import sys,os
 sys.path.insert(0,sys.argv[1])

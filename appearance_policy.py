@@ -22,8 +22,10 @@ LABEL_FONTS = 'Global font settings'
 
 def validate(data):
     if (not isinstance(data, dict) or data.get('schemaVersion') != 1
-            or set(data) != {'schemaVersion', 'fonts', 'theme', 'background'}):
+            or set(data) not in ({'schemaVersion', 'fonts', 'theme', 'background'}, {'schemaVersion', 'fonts', 'theme', 'background', 'icons'})):
         raise ValueError('unsupported Look and Feel policy schema')
+    if data.get('icons') is not None and (not isinstance(data['icons'], str) or not data['icons'].startswith('icon:') or len(data['icons']) > 300):
+        raise ValueError('invalid saved icon selection')
     fonts = data['fonts']
     if fonts is not None:
         if not isinstance(fonts, dict) or set(fonts) != {'systemId', 'systemSize', 'terminalId', 'terminalSize'}:
@@ -181,6 +183,8 @@ def recover_theme_undos():
     for _, path, journal in records():
         if not journal.get('themeUndoPending'):
             continue
+        import requirements
+        requirements.require('theme')
         context = journal.get('appearanceContext', {})
         before = context.get('themeBefore')
         if not isinstance(before, str) or not re.fullmatch(r'[a-z0-9][a-z0-9_-]*', before):
@@ -200,6 +204,8 @@ def recover_theme_undos():
 
 
 def undo_theme():
+    import requirements
+    requirements.require('theme')
     row = latest(LABEL_THEME)
     if row is None:
         if any(item[2].get('label') == LABEL_THEME for item in records()):
@@ -239,13 +245,16 @@ def reconcile():
     import controller
     policy = read()
     pending, results = [], {}
-    for section in ('theme', 'fonts'):
-        value = policy[section]
+    for section in ('theme', 'fonts', 'icons'):
+        value = policy.get(section)
         if value is None:
             continue
         try:
             if section == 'theme':
                 result = apply_theme(value['mode'], value['light'], value['dark'], automatic=True)
+            elif section == 'icons':
+                from icon_actions import apply as apply_icons
+                result = apply_icons(value, automatic=True)
             else:
                 result = controller.apply_global_fonts(value['systemId'], value['systemSize'],
                                                        value['terminalId'], value['terminalSize'], automatic=True)

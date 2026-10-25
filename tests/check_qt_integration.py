@@ -63,6 +63,37 @@ for raw in (base+'\nlocal hl', base+'\nlocal x, hl', base+'\nlocal hl <const> = 
     else:raise AssertionError('unsafe Lua accepted: '+raw)
 
 colors={'mode':'dark','background':'#111111','foreground':'#eeeeee','accent':'#7744ee','selection':'#7744ee','muted':'#999999','lighter_background':'#222222','selection_foreground':'#ffffff'}
+# New/changed qtct activation must not expose damaged saved fonts before the
+# later Fonts stage has repaired them. Palette writes never acquire fonts.
+bad='Avenir Next,11,-1,400,0,0,0,0,0,0,0,0,0,0,1,Regular'
+with patch.object(qt,'plugins',return_value=plugins):
+    for version in (5,6):
+        p.write_text(base)
+        for major in (5,6): put(f'qt{major}ct-settings',b'[Appearance]\n')
+        damaged=put(f'qt{version}ct-settings',('[Fonts]\ngeneral="'+bad+'"\n').encode())
+        original=damaged.read_bytes()
+        plan=themes.Plan();assert qt.prepare(plan,automatic=False) is None
+        assert not plan.targets and plan.pending[0]['action']=='repair-fonts-first'
+        assert p.read_text()==base and damaged.read_bytes()==original
+        themed=themes.build(colors,colors,'dark','dark',set())
+        assert 'hypr-qt-integration' not in themed.targets
+        assert prefs.decode(f'qt{version}ct-settings',themed.targets[f'qt{version}ct-settings'])['Fonts/general']=='"'+bad+'"'
+        # Changing an existing managed selector has the same guard.
+        p.write_text(qt.encode({'body':base,'integration':{'selector':'qt5ct','session':'old-session'}}))
+        changed=themes.Plan();assert qt.prepare(changed,automatic=False) is None
+        assert changed.pending[0]['action']=='repair-fonts-first' and not changed.targets
+        # A user-provided integration already active in both majors is left
+        # alone; unrelated theme/icon edits do not try to own or repair fonts.
+        p.write_text(base)
+        with patch.dict(os.environ,QT_QPA_PLATFORMTHEME='qt6ct'):
+            already=themes.Plan();assert qt.prepare(already,automatic=False)=='qt6ct'
+            assert not already.targets and not already.pending
+        from global_font_actions import _qt_font_value
+        damaged.write_text('[Fonts]\ngeneral="'+_qt_font_value(bad,'DejaVu Sans',12,version)+'"\n')
+        waiting=themes.Plan();assert qt.prepare(waiting,automatic=True) is None
+        assert not waiting.targets and waiting.pending[0]['action']=='apply-integration'
+        repaired=themes.Plan();assert qt.prepare(repaired,automatic=False)=='qt6ct'
+        assert 'hypr-qt-integration' in repaired.targets
 put('qt5ct-settings',b'[Appearance]\n')
 put('qt6ct-settings',b'[Appearance]\n')
 put('onlyoffice-settings',b'[General]\ntitlebar=system\n')

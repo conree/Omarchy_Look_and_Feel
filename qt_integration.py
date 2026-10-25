@@ -144,6 +144,19 @@ def prepare(plan, *, automatic):
         if (previous or {}).get('selector') != selected and automatic:
             plan.wait('Qt', 'apply-integration', 'Press Apply once to enable the shared Qt font and palette integration.')
             return None
+        if (previous or {}).get('selector') != selected:
+            # Theme Apply runs before Fonts Apply. Do not activate existing
+            # malformed fonts merely by enabling qtct; Theme owns no fonts.
+            from managed_preferences import decode as preferences
+            from global_font_actions import _parse_qt_font
+            for version in (5, 6):
+                target = f'qt{version}ct-settings'
+                values = preferences(target, read(target))
+                for key in ('Fonts/general', 'Fonts/fixed'):
+                    if key in values and _parse_qt_font(values[key], version) is None:
+                        plan.wait('Qt', 'repair-fonts-first',
+                                  f'Qt {version} has malformed saved fonts. Apply Fonts first, then apply the theme again to enable Qt integration.')
+                        return None
         session = os.environ.get('HYPRLAND_INSTANCE_SIGNATURE', '')
         if not re.fullmatch(r'[A-Za-z0-9_.-]{1,200}', session):
             raise ValueError('Apply Qt integration from the active Omarchy desktop session.')

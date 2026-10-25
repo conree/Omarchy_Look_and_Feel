@@ -27,7 +27,7 @@ function evaluate(stdoutText, stderrText, exitCode) {
       needsAction: pending.length > 0 || (reload.failed || []).length > 0,
       message: "Font settings saved and checked in " + Number(result.targetCount || 0) + " configuration files"
         + (result.desktopFontsVerified ? " and the active desktop font settings." : ".")
-        + reloadNote + pendingNote + " Individual applications' rendered fonts are not automatically verified." }
+        + reloadNote + pendingNote + " Individual applications' rendered fonts are not automatically verified. Reopen applications that retain the previous font." }
   if (typeof result.rolledBack === "string" && result.rolledBack)
     return { success: true, undoAvailable: false, refreshInventory: true,
       needsAction: (reload.failed || []).length > 0,

@@ -25,4 +25,11 @@ for(const bad of [{},null,[],{state:'committed'},{state:'committed',readback:[]}
  c.finishAppearanceAction();assert.equal(calls.length,1);assert(!calls[0][0]);
  assert(!c.root.appearanceActionMessages.theme.includes('Desktop theme changed'));
 }
+for (const output of [{state:'committed',readback:'TestIcons'}, {rolledBack:'test-id',readback:'OldIcons',restored:'OldIcons'}]) {
+ const [c,calls]=fixture(output);c.root.appearanceActionKind='icons';c.root.globalApplyCurrentStep='icons';
+ c.root.icons=[{id:'old',name:'OldIcons'}];
+ Object.assign(c.appearanceActionProcess,{stdoutFinished:true,stderrFinished:true,exitSeen:true});
+ c.finishAppearanceAction();assert.equal(calls.length,1);assert(calls[0][0]);
+ assert(c.root.appearanceActionMessages.icons.toLowerCase().includes(output.rolledBack ? 'restored' : 'icon'));
+}
 console.log('Appearance result handling passed: 6 event orders, malformed success refusal, terminal refresh attention.');

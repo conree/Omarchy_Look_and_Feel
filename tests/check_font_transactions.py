@@ -28,7 +28,7 @@ with TemporaryDirectory(prefix='laf-font-first-use-') as tmp, ExitStack() as sta
     home = fixture(stack, tmp)
     stack.enter_context(patch.object(fonts.shutil, 'which', return_value='/fixture/terminal'))
     targets, count = fonts.build_global_font_targets('Avenir Next', 12, 'Comic Code', 12, set(fonts.TERMINAL_COMMANDS))
-    assert count == 5 and len(targets) == 11
+    assert count == 5 and len(targets) == 12
     transaction_id = tx.apply_file_targets(targets, label='Global font settings')
     paths = {key: home / tx.FILE_TARGETS[key] for key in targets}
     assert all(path.read_bytes() == targets[key] for key, path in paths.items())
@@ -96,4 +96,4 @@ with TemporaryDirectory(prefix='laf-font-failure-') as tmp, ExitStack() as stack
         else: raise AssertionError('failure accepted')
     assert gtk.read_bytes() == b'[Settings]\ngtk-font-name=Original 10\n'
     assert not failed_path.exists()
-print('7 isolated font transaction scenarios passed (11-target first Apply/Undo, permissions, 4 unsafe paths, failure rollback).')
+print('7 isolated font transaction scenarios passed (12-target first Apply/Undo, permissions, 4 unsafe paths, failure rollback).')

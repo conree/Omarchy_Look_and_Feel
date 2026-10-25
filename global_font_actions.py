@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -110,7 +111,8 @@ def _replace_foot(text: str, family: str, size: int) -> str:
             lines.insert(start + 1, f"font={family}:size={size}")
         else:
             lines[at] = f"font={family}:size={size}"
-    return "\n".join(lines).rstrip() + "\n"
+    result = "\n".join(lines).rstrip() + "\n"
+    return _replace_ini_value(result, "main", "dpi-aware", "no")
 
 
 def _replace_kitty(text: str, family: str, size: int) -> str:
@@ -138,6 +140,117 @@ def _replace_wezterm(text: str, family: str, size: int) -> str:
         raise TransactionError(str(exc)) from exc
 
 
+def _parse_qt_font(original: str, version: int):
+    """Preserve valid QFont attributes, repairing malformed native values.
+
+    QFont.fromString silently coerces some malformed fields. A missing style
+    hint can turn weight 400 into an invalid hint and shift another value into
+    stretch, collapsing all text. Validate field domains before native parsing.
+    """
+    try:
+        from PySide6.QtGui import QFont
+    except ImportError as exc:
+        raise TransactionError("Qt font validation requires pyside6; install it before applying fonts") from exc
+
+    parts = original.strip('"').split(',') if original else []
+    extended = len(parts) >= 16
+    valid = bool(parts) and (len(parts) in (10, 11) or (version == 6 and len(parts) >= 16))
+
+    def number(index):
+        value = float(parts[index])
+        if not math.isfinite(value):
+            raise ValueError('non-finite QFont field')
+        return value
+
+    def integer(index):
+        if not re.fullmatch(r'[+-]?[0-9]+', parts[index].strip()):
+            raise ValueError('non-integral QFont field')
+        return int(parts[index])
+
+    font = QFont()
+    try:
+        if valid:
+            valid = (bool(parts[0]) and (number(1) == -1 or number(1) > 0)
+                     and (integer(2) == -1 or integer(2) > 0)
+                     and integer(3) in {item.value for item in QFont.StyleHint}
+                     and (1 <= integer(4) <= 1000 if extended else 0 <= integer(4) <= 99)
+                     and integer(5) in {item.value for item in QFont.Style}
+                     and all(integer(i) in (0, 1) for i in (6, 7, 8, 9)))
+        if valid and extended:
+            strategy_mask = 0
+            for flag in QFont.StyleStrategy:
+                strategy_mask |= flag.value
+            valid = (integer(10) in {item.value for item in QFont.Capitalization}
+                     and integer(11) in {item.value for item in QFont.SpacingType}
+                     and math.isfinite(number(12)) and math.isfinite(number(13))
+                     and 0 <= integer(14) <= 4000
+                     and integer(15) > 0 and not integer(15) & ~strategy_mask)
+            # Qt 6.12 appends counted OpenType feature and variable-axis
+            # records after styleName. Earlier Qt 6 writes 16 or 17 fields.
+            # https://github.com/qt/qtbase/blob/6.12/src/gui/text/qfont.cpp
+            if valid and len(parts) > 17:
+                at = 17
+                for is_axis in (False, True):
+                    count = integer(at)
+                    if not 0 <= count <= 256:
+                        raise ValueError('invalid QFont feature count')
+                    at += 1
+                    seen = set()
+                    for _ in range(count):
+                        tag, separator, value = parts[at].partition('=')
+                        if (not separator or len(tag) != 4 or tag in seen
+                                or any(not 32 <= ord(char) <= 126 for char in tag)):
+                            raise ValueError('invalid QFont feature tag')
+                        seen.add(tag)
+                        if is_axis:
+                            if not math.isfinite(float(value)):
+                                raise ValueError('invalid QFont variable axis')
+                        elif not value.isascii() or not value.isdecimal() or not 0 <= int(value) <= 0xffffffff:
+                            raise ValueError('invalid QFont feature value')
+                        at += 1
+                valid = at == len(parts)
+        if valid:
+            valid = font.fromString(','.join(parts))
+            valid = valid and (font.styleHint().value == integer(3) and font.style().value == integer(5))
+            if extended:
+                valid = valid and (font.weight().value == integer(4) and font.stretch() == integer(14))
+    except (ValueError, OverflowError, IndexError):
+        valid = False
+    return font if valid else None
+
+
+def _qt_font_value(original: str, family: str, size: int, version: int) -> str:
+    if any(char in family for char in ',\n\r\x00'):
+        raise TransactionError("Qt font family cannot be represented without ambiguity")
+    font = _parse_qt_font(original, version)
+    from PySide6.QtGui import QFont
+
+    if version == 5:
+        # Qt 5 uses the old 0..99 weight scale and ten fields plus an optional
+        # style name. Qt 6's longer wire format is not compatible with it.
+        if font is None:
+            parts = [family, str(size), '-1', '5', '50', '0', '0', '0', '0', '0']
+        else:
+            parts = original.strip('"').split(',')
+        parts[0], parts[1], parts[2] = family, str(size), '-1'
+        return ','.join(parts)
+
+    if font is None:
+        font = QFont(family, size)
+        font.setStyleHint(QFont.StyleHint.AnyStyle)
+        font.setWeight(QFont.Weight.Normal)
+        font.setStretch(100)
+    font.setFamily(family)
+    font.setPointSize(size)
+    result = font.toString()
+    check = QFont()
+    if (not check.fromString(result) or check.family() != family or check.pointSize() != size
+            or check.weight() != font.weight() or check.stretch() != font.stretch()
+            or check.styleHint() != font.styleHint()):
+        raise TransactionError("Qt font serialization failed native readback")
+    return result
+
+
 def build_global_font_targets(system_family: str, system_size: int, terminal_family: str, terminal_size: int,
                               terminal_ids: set[str] | None = None) -> tuple[dict[str, bytes], int]:
     """Build reversible file targets for desktop, shell, and detected terminals."""
@@ -151,8 +264,19 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
     ):
         targets[target_id] = _replace_ini_value(_read(path, allow_missing=True), "Settings", "gtk-font-name", f"{system_family} {system_size}").encode()
 
-    # qtct stores QFont::toString values. Preserve all serialized attributes
-    # except family and point size, and leave every other INI key untouched.
+    # Omarchy's qual=any monospace override also captures explicit families
+    # whose fallback list contains monospace. Repair only the reviewed rule.
+    from fontconfig_policy import build as fontconfig_policy
+    from transaction import _ensure_home_path
+    fontconfig_path = _ensure_home_path(HOME / FILE_TARGETS['fontconfig-monospace'], allow_missing_parents=True)
+    try:
+        fontconfig_text = fontconfig_path.read_bytes().decode('utf-8') if fontconfig_path.exists() else ''
+        targets['fontconfig-monospace'] = fontconfig_policy(fontconfig_text, terminal_family).encode()
+    except (OSError, ValueError) as exc:
+        raise TransactionError(str(exc)) from exc
+
+    # qtct stores version-specific QFont::toString values. Preserve valid
+    # custom attributes; repair malformed values before Qt can inherit them.
     from application_themes import ini
     from managed_preferences import decode
     for version in (5, 6):
@@ -165,14 +289,8 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
         text = _read(path, allow_missing=True)
         data = decode(target, text.encode())
         for role, family, size in (("general", system_family, system_size), ("fixed", terminal_family, terminal_size)):
-            if any(char in family for char in ',\n\r'):
-                raise TransactionError("Qt font family cannot be represented without ambiguity")
-            original = data.get("Fonts/" + role, "").strip('"')
-            parts = original.split(',') if original else [family, str(size), '-1', '5', '50', '0', '0', '0', '0', '0']
-            if len(parts) < 2:
-                raise TransactionError("unsupported Qt font serialization")
-            parts[0], parts[1] = family, str(size)
-            text = ini(text, "Fonts", role, '"' + ','.join(parts) + '"')
+            value = _qt_font_value(data.get("Fonts/" + role, ""), family, size, version)
+            text = ini(text, "Fonts", role, '"' + value + '"')
         targets[target] = text.encode()
 
     shell_font_path = CONFIG / "omarchy/shell-font.json"

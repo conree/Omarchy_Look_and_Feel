@@ -556,7 +556,76 @@ def _historical_mail_target(target_id: str, relative: str) -> bool:
     return rel.parts[:len(profile_root)] == profile_root and len(rel.parts) > len(profile_root) + 1
 
 
+def _require_qt_restore(transaction_dir, journal, snapshot_sources=None):
+    """Do not put known-invalid saved Qt fonts back into a fresh desktop.
+
+    Inspect only fields the actual restore branch will replace. Icon/palette
+    Undo therefore remains available when its untouched font fields are bad.
+    The caller invokes this before recording intent or writing any target.
+    """
+    from managed_preferences import decode
+    for item in _journal_targets(journal):
+        if item['id'] not in {'qt5ct-settings', 'qt6ct-settings'}:
+            continue
+        changes = item.get('managedEdits')
+        fields = {'Fonts/general', 'Fonts/fixed'}
+        if changes is not None:
+            fields &= changes.keys()
+            if not fields:
+                continue
+        target = _ensure_home_path(_home() / item['relativePath'])
+        current = _current_file_state(target)
+        before = item['before']
+        if _same_saved_state(current, before):
+            continue
+        merging = changes is not None and (current.get('sha256') != item.get('appliedSha256')
+                                           or item['id'] in journal.get('groupTouched', []))
+        try:
+            if merging:
+                values = [changes[field]['before'][0] for field in fields if changes[field]['before']]
+            elif before['exists']:
+                snapshot = (snapshot_sources or {}).get(item['id'], transaction_dir / 'before' / before['snapshot'])
+                raw = _ensure_home_path(snapshot, allow_missing_leaf=False).read_bytes()
+                if _sha256(raw) != before['sha256']:
+                    raise TransactionError('Qt font snapshot integrity check failed')
+                old = decode(item['id'], raw)
+                values = [old[field] for field in fields if field in old]
+            else:
+                values = []
+            if values:
+                from global_font_actions import _parse_qt_font
+                version = 5 if item['id'] == 'qt5ct-settings' else 6
+                if any(not isinstance(value, str) or _parse_qt_font(value, version) is None for value in values):
+                    raise ValueError('invalid saved QFont fields')
+        except (ValueError, OSError) as exc:
+            raise TransactionError(
+                f"Undo/recovery stopped: {item['id']} has a malformed saved font. "
+                f"Keep the repaired fonts and review {transaction_dir / 'transaction.json'} "
+                "before retrying; no restore files were changed.") from exc
+
+
+def _require_restore(journal, *, check_qt=True):
+    # Recovery can also be invoked directly, outside the controller preflight.
+    # Missing infrastructure must not cause a predictable partial restoration.
+    if "desktopFonts" in journal:
+        import desktop_fonts
+        desktop_fonts.validate(journal["desktopFonts"])
+        try:
+            desktop_fonts._settings()
+        except (ImportError, ValueError, RuntimeError) as exc:
+            raise TransactionError('Desktop recovery needs python-gobject and gsettings-desktop-schemas.') from exc
+    if journal.get("themeUndoPending"):
+        import requirements
+        try:
+            requirements.require('theme')
+        except RuntimeError as exc:
+            raise TransactionError(str(exc)) from exc
+    if check_qt:
+        _require_qt_restore(transactions_path() / journal['id'], journal)
+
+
 def _restore_transaction(transaction_dir: Path, journal: dict[str, object]) -> None:
+    _require_restore(journal)
     from app_font_actions import lock_mail_paths
     paths = [_ensure_home_path(_home() / str(row["relativePath"])) for row in _journal_targets(journal)]
     from browser_font_actions import lock_paths
@@ -822,7 +891,7 @@ def apply_settings(settings: object, target_contents: Mapping[str, bytes], catal
 
 
 def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str,
-                       desktop_font_values: Mapping[str, str] | None = None,
+                       desktop_font_values: Mapping[str, str | float] | None = None,
                        parent_transaction: str | None = None,
                        appearance_context: dict | None = None,
                        owned_fields: Mapping[str, set[str]] | None = None) -> str:
@@ -935,7 +1004,8 @@ def apply_file_targets(target_contents: Mapping[str, bytes], *, label: str,
                 from managed_preferences import FIELDS, edits
                 if target_id in FIELDS:
                     prior = (transaction_dir / "before" / before["snapshot"]).read_bytes() if before["exists"] else None
-                    entry["managedEdits"] = edits(target_id, prior, payload)
+                    entry["managedEdits"] = edits(target_id, prior, payload,
+                                                  owned_fields=(owned_fields or {}).get(target_id, FIELDS[target_id]))
                 if target_id == "betterbird-prefs":
                     from app_font_actions import mail_font_values
                     entry["mailFontsAfter"] = mail_font_values(payload.decode("utf-8"))
@@ -1027,11 +1097,22 @@ def _prepare_group_undo(directory, transaction_dir, journal):
         child = _load_journal(candidate)
         if child.get("parentTransaction") == transaction_dir.name and child["state"] == "committed":
             children.append((child.get("createdAt", ""), candidate, child))
+    _require_restore(journal, check_qt=False)
+    for _, _, child in children:
+        _require_restore(child, check_qt=False)
     import copy
     merged = {row["id"]: copy.deepcopy(row) for row in _journal_targets(journal)}
+    desktop_merged = {row["key"]: copy.deepcopy(row) for row in journal.get("desktopFonts", [])}
     touched = set()
     unowned_drift = set()
+    snapshot_copies = []
+    snapshot_sources = {}
     for _, child_dir, child in sorted(children):
+        for row in child.get("desktopFonts", []):
+            if row["key"] not in desktop_merged:
+                desktop_merged[row["key"]] = copy.deepcopy(row)
+            else:
+                desktop_merged[row["key"]]["after"] = copy.deepcopy(row["after"])
         for row in _journal_targets(child):
             key = row["id"]
             touched.add(key)
@@ -1044,7 +1125,8 @@ def _prepare_group_undo(directory, transaction_dir, journal):
                     if _sha256(raw) != before["sha256"]:
                         raise TransactionError("child snapshot integrity check failed")
                     name = "group-" + child_dir.name + "-" + key + ".before"
-                    _atomic_write(transaction_dir / "before" / name, raw, 0o600)
+                    snapshot_copies.append((transaction_dir / "before" / name, raw))
+                    snapshot_sources[key] = src
                     before["snapshot"] = name
             else:
                 first = merged[key]
@@ -1062,6 +1144,14 @@ def _prepare_group_undo(directory, transaction_dir, journal):
                             changes[field]["after"] = copy.deepcopy(change["after"])
     if unowned_drift:
         raise TransactionError("Undo requires a field-aware adapter for intervening changes; preserving: " + ", ".join(sorted(unowned_drift)))
+    _require_qt_restore(transaction_dir, {**journal, 'targets': list(merged.values()),
+                                         'groupTouched': sorted(touched)}, snapshot_sources)
+    if desktop_merged:
+        import desktop_fonts
+        desktop_fonts.validate(list(desktop_merged.values()))
+        journal["desktopFonts"] = list(desktop_merged.values())
+    for snapshot_path, raw in snapshot_copies:
+        _atomic_write(snapshot_path, raw, 0o600)
     journal["targets"] = list(merged.values())
     journal["groupTouched"] = sorted(touched)
     journal["groupChildren"] = [child_dir.name for _, child_dir, _ in sorted(children)]
@@ -1069,7 +1159,9 @@ def _prepare_group_undo(directory, transaction_dir, journal):
 
 
 def _restore_group(directory, transaction_dir, journal):
+    _require_restore(journal, check_qt=False)
     _prepare_group_undo(directory, transaction_dir, journal)
+    _require_qt_restore(transaction_dir, journal)
     journal["groupUndoPending"] = True
     _write_journal(transaction_dir / "transaction.json", journal)
     if journal["state"] != "rolled_back":

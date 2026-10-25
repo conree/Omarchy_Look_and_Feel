@@ -109,6 +109,9 @@ def display_words(value: str) -> str:
 
 def catalog_entry_eligible(entry: dict[str, object]) -> bool:
     """Require reviewed evidence, or an explicit development-only approval."""
+    if entry.get("applyMethod") == "installed-icon":
+        from icon_actions import selectable
+        return entry.get("kind") == "icon" and selectable(entry.get("name", ""), entry.get("source", []))
     if entry.get("applyMethod") == "omarchy":
         if entry.get("review") == "ambiguous-plymouth-logo-readback":
             return False
@@ -222,7 +225,7 @@ def icon_entries() -> list[dict[str, object]]:
             "displayName": display_words(name),
             "source": sources, "license": None, "review": "metadata-unverified",
             "licenseEvidence": None, "provenanceVerified": False,
-            "compatibility": "not-required", "selectable": False,
+            "compatibility": "not-required", "applyMethod": "installed-icon", "selectable": False,
         })
     return entries
 
@@ -521,6 +524,8 @@ def inventory() -> dict[str, object]:
         for record in records:
             record["selectable"] = catalog_entry_eligible(record)
     status = action_status()
+    import icon_actions
+    status["icons"] = icon_actions.status()
     saved_theme = appearance_policy.latest(appearance_policy.LABEL_THEME)
     if any(row[2].get("label") == appearance_policy.LABEL_THEME for row in appearance_policy.records()):
         status["theme"]["undoAvailable"] = saved_theme is not None
@@ -577,6 +582,9 @@ def apply_selected_theme(mode: str, light_name: str, dark_name: str) -> dict[str
 
 
 def apply_catalog_action(kind: str, entry_id: str) -> dict[str, object]:
+    if kind == "icons":
+        from icon_actions import apply
+        return apply(entry_id)
     if kind == "background":
         records = [entry for entry in background_entries() if catalog_entry_eligible(entry)]
         entry = next((item for item in records if item["id"] == entry_id), None)
@@ -671,7 +679,7 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
     import desktop_fonts
     values = {"font-name": f"{system_family} {system_size}",
               "document-font-name": f"{system_family} {system_size}",
-              "monospace-font-name": f"{terminal_family} {terminal_size}"}
+              "monospace-font-name": f"{terminal_family} {terminal_size}", "text-scaling-factor": 1.0}
     parent = policy.latest(policy.LABEL_FONTS) if automatic else None
     if automatic:
         if parent is None:
@@ -691,6 +699,7 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         targets["appearance-policy"] = policy.update("fonts", {"systemId": system_font_id, "systemSize": system_size,
                                                                 "terminalId": terminal_font_id, "terminalSize": terminal_size})
     ownership = {
+        'fontconfig-monospace': {'monospace-rule'},
         'wezterm-config': {'fonts'},
         'appearance-policy': {'fonts'},
         'gtk3-settings': {'Settings/gtk-font-name'},
@@ -734,6 +743,29 @@ def main(argv: list[str]) -> int:
             from managed_preferences import AUTOMATIC
             token = AUTOMATIC.set(argv == ["reconcile"])
             try:
+                import requirements
+                if argv[0] == "apply-global-fonts":
+                    requirements.require('fonts')
+                elif argv[0] == "apply-theme":
+                    requirements.require('theme')
+                elif argv[:2] == ["apply-catalog-action", "icons"]:
+                    requirements.require('icons')
+                elif argv[:2] == ["apply-catalog-action", "background"]:
+                    requirements.require('background')
+                elif argv == ["rollback-global-fonts"]:
+                    requirements.require('desktop')
+                    requirements.require('font-restore')
+                elif argv == ["rollback-appearance", "icons"]:
+                    requirements.require('desktop')
+                elif argv == ["rollback-appearance", "theme"]:
+                    requirements.require('theme')
+                elif argv == ["rollback-appearance", "background"]:
+                    requirements.require('background')
+                elif argv == ["reconcile"]:
+                    saved = appearance_policy.read()
+                    for area in ('theme', 'fonts', 'icons'):
+                        if saved.get(area):
+                            requirements.require(area)
                 recover_pending()
                 appearance_policy.recover_theme_undos()
                 return _main(argv)
@@ -745,6 +777,13 @@ def main(argv: list[str]) -> int:
 
 
 def _main(argv: list[str]) -> int:
+    if argv == ["doctor"]:
+        import requirements
+        result = requirements.inspect()
+        json.dump(result, sys.stdout, ensure_ascii=False, indent=2)
+        sys.stdout.write("\n")
+        return 0 if result["ready"] else 2
+
     if argv == ["reconcile"]:
         import appearance_policy
         json.dump(appearance_policy.reconcile(), sys.stdout, ensure_ascii=False, sort_keys=True)
@@ -797,6 +836,9 @@ def _main(argv: list[str]) -> int:
             if argv[1] == "theme":
                 from appearance_policy import undo_theme
                 result = undo_theme()
+            elif argv[1] == "icons":
+                from icon_actions import undo
+                result = undo()
             else:
                 result = rollback_action(argv[1])
         except (TransactionError, OSError, ValueError) as exc:
