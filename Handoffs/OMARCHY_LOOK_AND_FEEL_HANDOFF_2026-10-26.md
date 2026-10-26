@@ -2,11 +2,61 @@
 
 Source: `/home/si/Projects/Omarchy_Plugins/Look_and_Feel`.
 Publication: `https://github.com/conree/Omarchy_Look_and_Feel`, branch `main`.
-The installed plugin is a symlink to this repository. The host shell was reloaded
-and the 0.2.0 manifest/new catalog cache were verified; the fresh log has no
-Look & Feel load/type errors. Git identifies publication;
+The installed plugin is a symlink to this repository. During implementation the
+host shell was reloaded and the 0.2.0 manifest/new catalog cache were verified;
+the fresh log had no Look & Feel load/type errors. Git identifies publication;
 `README.md`, `PROJECT_STATUS.md` and `RELEASE_VALIDATION.md` define supported
 behavior and evidence. This handoff supersedes the October 25 operational status.
+
+## Session closeout and publication
+
+The completed runtime source is commit
+`ff768695429945fa25af8f41c8554a2ecd0fffb6` (`Place selectors above examples and align
+font samples`), following `17973a0` (`Release 0.2.0 with cached previews and verified
+boot artwork`). Both were pushed to `origin/main`. Before this handoff update,
+the working tree was clean and local `HEAD` and `origin/main` matched that full
+commit. This closeout changes documentation only; the runtime version remains
+0.2.0. The user explicitly requested this session's handoff, then commit and push.
+Use Git history for the resulting documentation commit and its publication state.
+
+The user wants to email the plugin to someone for an opinion before announcing
+it more widely. A GitHub repository query during this session returned
+`visibility: PUBLIC` and `isPrivate: false` for
+[Omarchy Look & Feel](https://github.com/conree/Omarchy_Look_and_Feel).
+The source is therefore already public; a review invitation is not private
+distribution. Anonymous browser retrieval was attempted but could not be
+completed because the web tool returned a cache miss. Do not describe anonymous
+browser access as tested.
+
+The supplied email draft calls version 0.2.0 a development preview, links to the
+repository and its README installation instructions, and asks for feedback on
+layout, useful examples, confusing controls and failures. Suggested subject:
+“Could you try my Omarchy Look & Feel plugin?” The reviewer baseline is Omarchy
+4.0.6, Hyprland 0.56.2 with standard Lua configuration, and Python 3.11 or later.
+Screenshots of the three tabs were suggested for visual feedback without
+installation. No recipient was supplied, no email was sent, no attachment was
+prepared, and repository visibility/access were not changed. A separate reviewer
+checked the local remote, README and manifest supporting the sharing advice.
+
+If an attachment is requested later, make a clean source archive from a reviewed
+Git commit. Do not ZIP the workspace: ignored `Testing/` contains private VM
+images, keys, screenshots, baselines and recovery material. The current source
+tree contains no bundled paid fonts/themes or owner profiles; older Git history
+still contains four removed owner-theme image copies, as disclosed in README.
+
+## Next session
+
+1. The owner can send the prepared review invitation and collect feedback. Sending
+   email, choosing a recipient or changing repository visibility needs a new
+   explicit instruction; none was authorized by asking how to share it.
+2. Confirm whether the owner has since signed out and back in. At the last host
+   check, activating saved Qt integration and visually checking reopened
+   applications remained outstanding. Do not force a logout.
+3. Keep graphical Plymouth artwork rendering marked unverified until there is
+   direct graphical evidence. Existing encrypted cold-boot and embedded-asset
+   checks do not establish that visual result.
+4. Start further code work from the published source and use the validation
+   scopes below. The email/handoff closeout did not rerun runtime or boot tests.
 
 ## Completed implementation
 
@@ -59,9 +109,10 @@ licensed installed assets and screenshots are not publication payloads.
 
 ## Owner action and support limits
 
-The host still runs `QT_QPA_PLATFORMTHEME=gtk3`; `qt6ct` is saved in the same login
-session. Save work, sign out and back in once, then reopen applications. Do not
-force logout or kill applications with unsaved work. Host visual acceptance after
+At the last host check, `QT_QPA_PLATFORMTHEME=gtk3` was active and `qt6ct` was saved
+in the same login session. This state was not rechecked during the email/handoff
+closeout. Save work, sign out and back in once if still needed, then reopen
+applications. Do not force logout or kill applications with unsaved work. Host visual acceptance after
 that login remains unverified, and the recorded preview timings exclude the host
 compositor and animations.
 

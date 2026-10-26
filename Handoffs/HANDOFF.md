@@ -7,7 +7,14 @@ samples, verified explicit boot-artwork Apply/Undo/recovery, quieter background
 checks, and improved application discovery. Source and evidence limits are in
 `PROJECT_STATUS.md`, `RELEASE_VALIDATION.md` and `SOURCE_OF_TRUTH.md`.
 
-The remaining host action is a fresh login to activate the saved Qt integration,
-followed by checking reopened applications. Never force logout, run host sudo,
+Runtime commit `ff76869` is published on `main`. The repository was confirmed
+public during this session. The dated handoff now includes the email review
+invitation guidance, publication state and next-session actions. No email was
+sent; no attachment was prepared. The user requested commit and push of this
+documentation closeout.
+
+At the last host check, the remaining action was a fresh login to activate saved
+Qt integration, followed by checking reopened applications. Graphical Plymouth
+artwork rendering remains unverified. Never force logout, run host sudo,
 or enumerate/access another installed OS. Boot writes are tested only in the
 guarded file-backed VMs. Preserve boot hardening and browser security policies.
