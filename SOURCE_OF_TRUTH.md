@@ -13,6 +13,13 @@ and supported behavior; [PROJECT_STATUS.md](PROJECT_STATUS.md) records acceptanc
 The design brief contains owner requirements and explicitly dated history.
 Handoffs record operational continuity and are not design authority.
 
+The later October 26 public-documentation revision adds reproducible captures in
+`docs/`, updates the README and panel Help repair notice, removes the personal
+background-library search from `controller.py`, and replaces the local Office
+Code Pro archive reference with public evidence in `font-reviews.json`. These
+changes follow the VM archive below; that archive does not include this revision.
+See the public-documentation section of `RELEASE_VALIDATION.md` for its checks.
+
 The October 26 source adds separate application/terminal theme examples and
 always-visible inline boot artwork to `Panel.qml`, removing preview buttons.
 It also preloads examples and caches presentation data in `panel_preview_cache.py`,
@@ -26,8 +33,9 @@ The full-panel VM-tested runtime/test archive is
 Boot acceptance is in `Testing/Boot_VM_Lab/results/finish-boot-acceptance.json`.
 Application discovery and Qt manual-registration changes are included in that archive.
 A later presentation-only change moves the terminal monospace checkbox below its
-example. Only `Panel.qml` differs from that archive; current Git source and native
-alignment evidence are authoritative for this refinement.
+example. At that stage only `Panel.qml` differed from the archive; current Git
+source and native alignment evidence identify this refinement. The subsequent
+public-documentation revision is separately scoped above.
 
 The October 25 EE Calc-inspired panel runtime/test archive contains 61 files:
 `ea7774d1c2d4e853b90545b6a8cc9b17dd767d3d9207c9ba3763ef0fa9006ec3`.

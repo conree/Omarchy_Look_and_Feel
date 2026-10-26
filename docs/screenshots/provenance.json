@@ -1,0 +1,50 @@
+{
+  "date": "2026-10-26",
+  "panel": "Native production controls/layout; sample data; Qt offscreen window; no controller commands.",
+  "gtk": "Same native GTK 3 example, Adwaita before and production generated Catppuccin stylesheet after; temporary Broadway display.",
+  "source_sha256": {
+    "Panel.qml": "ddaeed6cb3f7c3b4b3aad6f8ec713d2ddd28d601a16162a5fbb981912414f968",
+    "application_themes.py": "1484022619eaac18576542c1e4551da95bf4a5f5b3e4bc754af719b8bb80c47c",
+    "css_takeover.py": "1f729fee0d16935381a7b98bb5006d2047e0a96dae5bc5ed67625c9c12565cd9",
+    "appearance_previews.py": "1691474696918890584dbbf46a5b6494d1d447ea92bf4e40fb0200581444505e",
+    "docs/capture_screenshots.py": "4ad37f5965af0aed2e8c2642e56d60d27c1aae36bf008616d8d3f5a10d84ffa3",
+    "docs/capture_gtk.py": "b18b189194dad12bb30e81f95940dc14cc36bfbe54980f3b3e58bd1dccff279b"
+  },
+  "images": {
+    "appearance.png": {
+      "size": [
+        840,
+        950
+      ],
+      "sha256": "1f1d282f832e6b110778381696d89e994fee4c3bf76616cc2db0c316d5d0f519"
+    },
+    "applications.png": {
+      "size": [
+        840,
+        850
+      ],
+      "sha256": "27dd7fc274f4a967fd883409311a7c3b13e2c36a4a7850650f77a1fba60c248e"
+    },
+    "fonts.png": {
+      "size": [
+        840,
+        730
+      ],
+      "sha256": "4f51c29468ab75c42441b956e9ed67a151a149763c407a6863013e37c5878d0d"
+    },
+    "gtk-after.png": {
+      "size": [
+        640,
+        400
+      ],
+      "sha256": "85220d423ee72e02460daae6fc91fb77d4d7df009a61821f7e7890edafde4e7d"
+    },
+    "gtk-before.png": {
+      "size": [
+        640,
+        400
+      ],
+      "sha256": "f9fcf14606d7f616b6945ae0486e129abce1deddd49fe9922067aabb06e6ca9d"
+    }
+  }
+}

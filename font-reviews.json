@@ -10,9 +10,9 @@
   },
   {
     "name": "Office Code Pro",
-    "source": "file:///home/si/Downloads/office-code-pro.zip (SHA-256 0976a8dfb646770166011c5b2c47de659e124b679ef725704d850e7d1905bbd8)",
+    "source": "https://fontlibrary.org/assets/downloads/office-code-pro/b3a2ffb01b7eaa87b2f9f9fafe024c78/office-code-pro.zip (SHA-256 cc6f46af8de42d43b633f0c21200ca247d53e6bfd407445b9a6fcf44f1ca6c6e)",
     "license": "SIL Open Font License 1.1",
-    "licenseEvidence": "file:///home/si/Downloads/office-code-pro.zip",
+    "licenseEvidence": "https://fontlibrary.org/en/font/office-code-pro",
     "provenanceVerified": true,
     "review": "verified",
     "compatibility": "not-required"

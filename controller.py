@@ -61,7 +61,6 @@ CURRENT_BACKGROUND_PATH = HOME / ".local/state/omarchy/current/background"
 WEATHER_SETTINGS_PATH = HOME / ".local/state/omarchy/settings/weather.json"
 LOCALTIME_PATH = Path("/etc/localtime")
 BACKGROUND_DIRS = (
-    HOME / "Documents/Fonts_Icons_Wallpaper/Backgrounds",
     HOME / ".config/omarchy/backgrounds",
     OMARCHY_ROOT / "backgrounds",
 )

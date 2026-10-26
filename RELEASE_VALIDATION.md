@@ -6,6 +6,49 @@ Version 0.2.0 adds verified boot-artwork Apply/Undo for the supported layout.
 Host application appearance after a fresh login still needs owner acceptance;
 no host logout or application restart was forced.
 
+## Public documentation and portability revision
+
+The later October 26 revision reorganizes the README around installation, Apply,
+Undo and disabling repair. The README and panel Help state that saved themes,
+fonts and icons are checked on load and every 15 seconds in every mode, including
+with the panel closed, and that hand edits to managed values can be replaced.
+`controller.py` no longer scans the owner's Documents wallpaper library. Standard
+Omarchy background folders, theme backgrounds and the current wallpaper remain
+discovery sources. Runtime feature scope and transaction writers are unchanged.
+
+`docs/screenshots/` contains three native renders of current production panel
+controls/layout with sample data in an isolated Qt window, and a native GTK 3
+example before/after loading the production Catppuccin stylesheet. The capture
+helpers are `docs/capture_screenshots.py` and `docs/capture_gtk.py`. The former
+replaces the shell window/IPC wrapper and does not run controller commands;
+the latter uses an offscreen widget on a private temporary Broadway display.
+They do not demonstrate end-to-end desktop Apply or arbitrary app compatibility.
+No personal wallpaper, profile, paid theme or real application inventory is used.
+
+Office Code Pro's public Font Library archive was downloaded and inspected:
+SHA-256 `cc6f46af8de42d43b633f0c21200ca247d53e6bfd407445b9a6fcf44f1ca6c6e`.
+Its `Office-Code-Pro-master/LICENSE.txt` contains SIL OFL 1.1 and has SHA-256
+`78ce650b35110da0870b8665f006f5ec28db05028b84bb8e0c675305f4137d54`.
+The regular OTF's native family name is Office Code Pro. The metadata describes
+this public archive, not arbitrary installed files or the earlier local ZIP.
+
+Checks for this revision passed: appearance previews, preview cache, native panel
+keyboard/focus, 20 panel interaction cases, appearance result ordering and icon
+panel routing. An isolated background-discovery check covers standard libraries,
+stock/user theme folders and an active image stored outside those libraries,
+including one in the former personal library. README relative links and anchors
+resolve; JSON and Python sources parse; `git diff --check` is clean.
+An initial disposable discovery probe inherited the host XDG config path and was
+correctly refused by the home-boundary guard; rerunning with isolated XDG paths
+passed. This was a test-fixture setup error, not a runtime change.
+
+Independent review inspected the source/docs and all five images, reproduced
+the panel captures without QML warnings, checked background discovery and font
+archive evidence, and found no blocking issue. Portable appearance and icon
+transaction suites also passed independently. Source/image hashes are recorded
+in `docs/screenshots/provenance.json`. This revision has not repeated the full VM
+Apply/Undo or boot matrix; its runtime changes are limited to discovery and Help.
+
 ## Version 0.2.0 completion checks
 
 Full-panel VM-tested runtime/test archive: SHA-256

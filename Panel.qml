@@ -1261,7 +1261,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Choose Automatic, Light or Dark mode on the Appearance tab. While the plugin is loaded, Automatic follows the current solar phase and checks saved appearance settings every 15 seconds. Choose the Light and Dark themes, then apply. Undo theme restores the previous detected theme."
+              text: "Choose Automatic, Light or Dark mode on the Appearance tab. Automatic follows local sunrise and sunset. In every mode, the loaded plugin checks saved themes, fonts and icons on startup and every 15 seconds, even with the panel closed. Hand edits to managed settings can be replaced. Undo the relevant choices, or disable the plugin to stop repair. Choose the Light and Dark themes, then apply. Undo theme restores the previous detected theme."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize

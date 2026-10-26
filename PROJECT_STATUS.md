@@ -9,6 +9,15 @@ not imply control of every custom application's fonts or content.
 
 ## Completed
 
+- Public README now leads with installation, first use, section Undo and disabling
+  repair, plus native panel captures and a GTK 3 palette comparison. The repair
+  notice and panel Help explicitly cover startup/15-second checks in all modes
+  and possible replacement of hand edits. Background discovery uses standard
+  Omarchy folders and the current wallpaper; the personal Documents scan is
+  removed. Office Code Pro metadata uses a checked public archive and license
+  evidence. Feature scope is unchanged. Capture methods and limits are recorded
+  in RELEASE_VALIDATION.md.
+
 - All drop-downs precede their examples, immediately below the corresponding
   headings. Mode is grouped on the right with Automatic/Light/Dark. The monospaced
   filter sits below the terminal sample, aligning both font sample boxes.

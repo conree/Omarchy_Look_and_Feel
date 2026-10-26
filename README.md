@@ -1,15 +1,40 @@
 # Omarchy Look & Feel
 
-Version **0.2.0**. One Omarchy panel for desktop and terminal fonts, themes, backgrounds, icons and boot artwork.
+One panel to make supported GTK, Qt and terminal apps follow your Omarchy theme.
+Choose fonts, light/dark themes, backgrounds and icons, then press **Apply changes**.
+Changes are journalled, with separate **Undo** controls for each section.
+
+Version **0.2.0** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+
+> **Automatic repair:** after you apply a choice, the loaded plugin checks saved
+> themes, fonts and icons on startup and every **15 seconds**, in all modes and
+> even with the panel closed. **Hand edits to managed settings can be overwritten.**
+> Undo the relevant choices or [disable the plugin](#undo-or-stop-managing-appearance)
+> before managing those settings by hand. Background and boot artwork are not
+> periodically reapplied.
+
+![Appearance tab with light and dark application and terminal previews](docs/screenshots/appearance.png)
+
+[Install](#install) · [Use the panel](#first-use) · [Undo or disable](#undo-or-stop-managing-appearance) · [Screenshots](#screenshots) · [Technical details](#technical-details)
+
+## What it does
+
+- Applies a shared palette and fonts to supported GTK, Qt and terminal interfaces.
+- Offers separate system and terminal fonts, light/dark themes, solar switching,
+  wallpaper and installed icon choices.
+- Shows application actions that still need attention, such as closing an app
+  or signing back in to activate Qt integration.
+- Includes app-specific adapters and optional boot artwork, with separate Undo.
+  Boot changes request administrator authentication when applied.
+
+Coverage depends on the application's settings and toolkit. A detected app or a
+successful Apply does not prove that every part of that app follows the theme.
+See the [interface table](#apply-and-automatic-reconciliation) for supported targets.
 
 ## Install
 
-The tested baseline is Omarchy **4.0.6**, Hyprland **0.56.2** with its standard
-Lua configuration, and Python **3.11 or later**. Theme Apply also checks for
-Omarchy's supported headless theme-generation branch. Older or custom builds
-are not assumed compatible merely because the plugin can be loaded.
-
-Install prerequisites using your normal package workflow. On that baseline:
+Tested with **Omarchy 4.0.6**, **Hyprland 0.56.2** using the standard Lua
+configuration, and **Python 3.11+**. Run these commands in your Omarchy session:
 
 ```sh
 sudo pacman -S --needed python python-gobject gsettings-desktop-schemas fontconfig procps-ng pyside6 qt5ct qt6ct
@@ -17,26 +42,89 @@ omarchy plugin add https://github.com/conree/Omarchy_Look_and_Feel.git --enable 
 python3 -B ~/.config/omarchy/plugins/si.omarchy-look-and-feel/controller.py doctor
 ```
 
-Run these from your active Omarchy session. The plugin manager clones, validates
-and enables the plugin; it does not install dependencies. `doctor` is read-only
-and reports missing packages or unsupported capabilities (exit 2 when incomplete).
-It checks available APIs and schemas, not application rendering or live IPC
-health. Optional `binutils` improves toolkit discovery through `readelf`.
-Application-specific packages are needed only for applications you actually use.
+The plugin manager installs and enables the panel; dependencies are installed
+separately by the first command. `doctor` checks requirements without changing
+settings and exits with status 2 if something is missing or unsupported. Older
+or custom Omarchy builds may lack required theme-generation capabilities.
 
-Choose your fonts, themes and optional icons, then press **Apply changes**. If Qt integration
-needs activation, save your work, sign out and back in once, then reopen your
-applications. The plugin reports this requirement; it never restarts the desktop.
-Brave and other offline profiles must remain closed while their settings are
-being applied. The current source tree bundles no paid fonts, commercial themes or owner
-profiles. Earlier commits contain four unused owner-theme unlock image copies;
-they have been removed from the current tree, not from Git history. Runtime
-previews discover assets already installed by the user.
+## First use
 
-Update with `omarchy plugin update si.omarchy-look-and-feel`. Undo each owned
-appearance choice **before** disabling/removing the plugin if you want its prior
-settings restored. Disabling alone stops reconciliation and releases its shell
-font binding; it intentionally does not discard saved application preferences.
+1. Open **Look & Feel** from its bar button.
+2. Choose your mode, Light and Dark themes, and background in **Appearance**.
+   Icons are optional. Put extra wallpaper images in `~/.config/omarchy/backgrounds/`.
+3. Choose the system and terminal font families and sizes in **Fonts**.
+4. Press **Apply changes**. It uses selections from all three tabs. Check
+   **Applications** for any remaining actions and expand **Details** on a result
+   when you need the full message.
+
+If Qt integration needs activation, save your work, sign out and back in once,
+then reopen applications. Close Brave, Typora and OnlyOffice when requested for
+profile changes, and keep them closed until Apply or Undo finishes.
+
+A failed step stops later steps. Completed steps remain applied and can be
+undone from their section. Switching tabs preserves your draft choices;
+restarting the shell clears unapplied drafts.
+
+## Undo or stop managing appearance
+
+Use **Undo theme**, **Undo fonts**, or the **Undo** beside Background and Icons
+to reverse the latest change in that section. Boot artwork has **Undo boot artwork**
+and an explicit recovery action for interrupted operations.
+
+Each Undo reverses one Apply and its associated automatic repairs. An earlier
+saved choice may become active again. To return through all previous plugin
+changes, repeat the relevant Undo controls while they remain available, then
+disable or remove the plugin. If Undo reports a conflict, read its Details;
+it will preserve edits it cannot safely restore.
+
+To stop automatic repair and keep the current application settings:
+
+```sh
+omarchy plugin disable si.omarchy-look-and-feel
+```
+
+Disabling also releases the shell font binding. It does **not** restore other
+application settings or erase saved choices. Re-enabling resumes saved choices.
+There is no separate repair-only switch; closing the panel does not stop repair.
+
+Update with `omarchy plugin update si.omarchy-look-and-feel`.
+To uninstall, use `omarchy plugin remove si.omarchy-look-and-feel`.
+Undo first if you want prior settings restored before removal.
+
+## Screenshots
+
+The Appearance image above and the tabs below are native renders of the current
+panel with sample catalog/application data, captured in an isolated Qt window.
+They show the controls and layout; the application list is illustrative.
+
+| Fonts | Applications |
+| --- | --- |
+| [![Fonts tab with separate system and terminal font samples](docs/screenshots/fonts.png)](docs/screenshots/fonts.png) | [![Applications tab with search and manual audit controls](docs/screenshots/applications.png)](docs/screenshots/applications.png) |
+
+The same native GTK 3 example before and after loading the plugin's generated
+Catppuccin stylesheet:
+
+| Before: Adwaita | After: Catppuccin |
+| --- | --- |
+| ![GTK 3 example using its default Adwaita palette](docs/screenshots/gtk-before.png) | ![The same GTK 3 example using the generated Catppuccin palette](docs/screenshots/gtk-after.png) |
+
+These captures demonstrate the generated palette, not every application's
+rendering or an end-to-end desktop Apply. Reproduce them with
+[`docs/capture_screenshots.py`](docs/capture_screenshots.py) and
+[`docs/capture_gtk.py`](docs/capture_gtk.py). The helpers describe their requirements;
+they use temporary displays and do not apply settings to your desktop.
+
+## Technical details
+
+The sections below cover behavior, supported interfaces, catalogs and source
+files. For development and testing, start with [PROJECT_STATUS.md](PROJECT_STATUS.md),
+[SOURCE_OF_TRUTH.md](SOURCE_OF_TRUTH.md) and [RELEASE_VALIDATION.md](RELEASE_VALIDATION.md).
+
+Optional `binutils` improves toolkit discovery through `readelf`. Application
+packages are needed only for apps you use. The current source tree bundles no
+paid fonts, commercial themes or owner profiles. Earlier commits retain four
+unused owner-theme unlock image copies that were removed from the current tree.
+Runtime previews use assets already installed by the user.
 
 ## Using the panel
 
@@ -82,8 +170,11 @@ The plugin saves the chosen fonts and light/dark themes in one desired-state
 file: `~/.config/omarchy-look-and-feel/policy.json` (or its XDG equivalent).
 Apply generates configuration from the selected palette and detected application
 interfaces. No Alucard, Van Helsing, user name, or particular font is required.
-The bar checks saved choices every 15 seconds while loaded, repairs supported
-configuration drift, and follows the solar phase in Automatic mode. It does
+The bar checks saved choices immediately on load and every 15 seconds while
+loaded, in Light, Dark and Automatic modes, even with the panel closed. It
+repairs supported configuration drift, including hand edits to managed values.
+Automatic mode also follows the solar phase. Themes, fonts and icons are managed;
+background and boot artwork are excluded from periodic repair. It does
 nothing to appearance until a choice has been applied. Background is applied
 separately. An installed icon theme can be applied independently across desktop,
 GTK and available Qt integrations, with its own Undo.
@@ -118,8 +209,9 @@ The transaction journal snapshots original data, records ownership of individual
 fields in shared GTK/Qt, policy, Typora and WezTerm files, and groups automatic
 repairs under the initiating Apply. Theme Undo preserves a later font choice;
 font Undo preserves a later theme choice. Unrelated application preferences and
-WezTerm Lua settings are retained. Unknown conflicting edits cause a refusal,
-not silent replacement. Interrupted operations recover from durable journals.
+WezTerm Lua settings are retained. Unrecognized conflicting structures cause a refusal. Recognized managed values
+can be replaced during automatic repair, including manual edits to those values.
+The refusal checks do not make hand edits to managed settings persistent. Interrupted operations recover from durable journals.
 Qt font records are checked for valid native fields before use. Font Apply repairs
 malformed records while preserving valid custom font attributes. Undo and recovery
 refuse to restore a malformed saved font, including in older journals; the repaired
@@ -222,8 +314,7 @@ The source of owner requirements is [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md).
   application and shell-font census.
 - Theme and unlock choices are discovered directly from the active Omarchy
   theme roots. Apply uses Omarchy's supported commands. Backgrounds come from
-  live Omarchy paths, the current wallpaper, and the selected personal
-  wallpaper library. Icons use installed themes with portable identifiers; selection does
+  live Omarchy paths and the current wallpaper. Icons use installed themes with portable identifiers; selection does
   not import or redistribute icon artwork or assert its redistribution license.
 - `appearance_actions.py`: journaled apply/readback/undo for Omarchy theme,
   background selections. Theme undo is a semantic
@@ -232,8 +323,8 @@ The source of owner requirements is [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md).
 - `solar_schedule.py`: offline approximate local sunrise/sunset calculations
   and next Light/Dark transition selection, evaluated by reconciliation.
 - `catalog-entry.schema.json`: metadata contract for stable, read-only
-  catalog entries. Discovery entries stay unselectable until provenance,
-  license, and compatibility checks are complete.
+  catalog entries. Review metadata is recorded separately from installed-font
+  availability; installed fonts remain selectable.
 - `transaction.py`: reversible file transaction core and target allowlist.
 - `terminal-font.schema.json`: contract for the saved Terminal dropdown value.
 - `settings.schema.json` and `settings.example.json`: version 2 of the
@@ -249,17 +340,16 @@ Themes and unlock designs come directly from the configured Omarchy root
 `~/.config/omarchy/themes/`. Unlock designs need both `unlock.png` and
 `preview-unlock.png`; designs whose logos cannot be uniquely verified are
 excluded from the independent boot-unlock selector.
-This follows the [Omarchy theme manual](https://omarchy.org/manual/themes/) and
-[Omarchy's theming guide](https://github.com/omacom/omarchy/blob/quattro/docs/theming.md):
-stock themes live in the Omarchy tree, user themes live in
-`~/.config/omarchy/themes/`, and each theme may include `backgrounds/` and
-unlock assets. Extra per-theme wallpapers come from
-`~/.config/omarchy/backgrounds/<theme>/`; the active wallpaper is
-`~/.local/state/omarchy/current/background`. The catalog also scans theme
-`backgrounds/` folders,
-`/usr/share/omarchy/backgrounds/`, `~/.config/omarchy/backgrounds/`, the active wallpaper, and
-`~/Documents/Fonts_Icons_Wallpaper/Backgrounds/`. Fonts are discovered through
-fontconfig; icons through active XDG data directories. The old copied catalog
+Stock themes live in the Omarchy tree and user themes in
+`~/.config/omarchy/themes/`. Each theme may include `backgrounds/` and unlock
+assets. Background discovery scans those theme folders,
+`~/.config/omarchy/backgrounds/` (including per-theme subfolders), and
+`backgrounds/` under the configured Omarchy root. It also includes the active
+wallpaper at `~/.local/state/omarchy/current/background`, even when the image is
+stored elsewhere. Put additional wallpaper images in
+`~/.config/omarchy/backgrounds/`; there is no machine-specific Documents scan.
+Fonts are discovered through Fontconfig; icons through active XDG data directories.
+The old copied catalog
 under `~/.local/share/omarchy-look-and-feel/catalogs/` is not read for dropdown
 discovery, so newly installed and updated Omarchy themes appear without a
 separate snapshot refresh.
@@ -269,16 +359,14 @@ themes need per-project compatibility and license review before import. The
 third-party wallpaper collection is not bulk-imported because its README says
 the maintainer does not own the images.
 
-Font choices follow the provenance rule in `DESIGN_BRIEF.md`: distribution-
-packaged fonts and individually verified open-source fonts may be catalogued.
-Record the exact source and license before a font appears in the chooser;
-fontconfig visibility alone is not sufficient. `font-reviews.json` currently
-contains reviewed records for Aileron and Office Code Pro. The latter's source
-and license evidence points to the verified local archive in `/home/si/Downloads`,
-so that record is specific to this machine until portable upstream evidence is
-established. OpenFont, Fontsource, and Font Library are discovery sources,
-with per-family license checks required. This catalog policy does not change
-fonts already installed or selected on desktop.
+Installed fonts are discovered through Fontconfig and remain selectable even
+without a reviewed metadata record. `font-reviews.json` records source and
+license evidence for Aileron and Office Code Pro; it does not install fonts or
+verify every installed file bearing those family names. Office Code Pro now
+uses a public [Font Library archive](https://fontlibrary.org/en/font/office-code-pro)
+with its recorded SHA-256 and included SIL Open Font License 1.1. No local
+Downloads folder is needed. Review source and license separately before
+redistributing any fonts or artwork.
 
 ## Validation and remaining coverage
 
@@ -292,5 +380,6 @@ capability and is also run in the VMs. VM tooling and results belong under
 
 Remaining coverage includes unsupported application-owned controls and profiles,
 full live visual testing across apps and physical hardware, fonts/scales beyond
-the measured VM matrix, and repairing the gated boot-unlock implementation. Do not infer boot safety from appearance tests or
-claim every application's rendering has been verified.
+the measured VM matrix, and graphical Plymouth rendering on physical hardware.
+Do not infer boot safety from appearance tests or claim every application's
+rendering has been verified.
