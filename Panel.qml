@@ -820,6 +820,12 @@ Panel {
       FieldLabel { text: choice.heading; Layout.fillWidth: true }
       Caption { objectName: choice.light ? "lightThemeActiveBadge" : "darkThemeActiveBadge"; text: "Active now"; visible: !!choice.entry.name && choice.entry.name === root.observedTheme; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 2) }
     }
+    Picker {
+      accessibleLabel: choice.heading; model: root.themes; textRole: "displayName"
+      currentIndex: root.themes.findIndex(function(entry) { return entry.id === choice.selectedId })
+      displayText: currentIndex >= 0 ? currentText : "Select theme"
+      onActivated: function(index) { if (choice.light) root.selectedLightThemeId = root.themes[index].id; else root.selectedDarkThemeId = root.themes[index].id }
+    }
     ColumnLayout {
       objectName: choice.light ? "lightThemePreview" : "darkThemePreview"
       Layout.fillWidth: true; spacing: 8
@@ -832,12 +838,6 @@ Panel {
         terminal: true; preview: choice.preview
       }
     }
-    Picker {
-      accessibleLabel: choice.heading; model: root.themes; textRole: "displayName"
-      currentIndex: root.themes.findIndex(function(entry) { return entry.id === choice.selectedId })
-      displayText: currentIndex >= 0 ? currentText : "Select theme"
-      onActivated: function(index) { if (choice.light) root.selectedLightThemeId = root.themes[index].id; else root.selectedDarkThemeId = root.themes[index].id }
-    }
   }
   component FontChoice: ColumnLayout {
     id: choice
@@ -847,25 +847,6 @@ Panel {
     readonly property string selectedFamily: root.catalogName(root.fonts, selectedId)
     Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; spacing: 12
     FieldLabel { text: choice.terminal ? "Terminals" : "System applications" }
-    Rectangle {
-      Layout.fillWidth: true; implicitHeight: Math.max(158, choice.selectedSize * 96 / 72 * 2.6 + 48)
-      color: root.surfaceColor; border.color: root.lineColor; radius: 3; clip: true
-      ColumnLayout {
-        anchors.fill: parent; anchors.margins: 16; spacing: 8
-        Text {
-          objectName: choice.terminal ? "terminalFontPreview" : "systemFontPreview"
-          Layout.fillWidth: true
-          text: choice.terminal ? "> Hello, world!\n0123456789  {} []" : "A place for everything.\nAa Bb Cc  0123456789"
-          font.family: choice.selectedFamily || root.fontFamily
-          font.pointSize: choice.selectedSize
-          color: root.popupForeground; elide: Text.ElideRight
-          maximumLineCount: 2; wrapMode: Text.Wrap
-        }
-        Item { Layout.fillHeight: true }
-        Caption { Layout.fillWidth: true; text: choice.selectedFamily ? choice.selectedFamily + " · " + choice.selectedSize + " pt" : "Choose a font below"; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 2); elide: Text.ElideRight; maximumLineCount: 1 }
-      }
-    }
-    Caption { text: "Font family"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
     Picker {
       objectName: choice.terminal ? "terminalFontPicker" : "systemFontPicker"
       accessibleLabel: choice.terminal ? "Terminal font family" : "System font family"
@@ -885,6 +866,24 @@ Panel {
         currentIndex: root.fontSizes.findIndex(function(entry) { return entry.id === choice.selectedSize })
         displayText: choice.selectedSize + " pt"
         onActivated: function(index) { if (choice.terminal) root.selectedTerminalSize = root.fontSizes[index].id; else root.selectedSystemSize = root.fontSizes[index].id }
+      }
+    }
+    Rectangle {
+      Layout.fillWidth: true; implicitHeight: Math.max(158, choice.selectedSize * 96 / 72 * 2.6 + 48)
+      color: root.surfaceColor; border.color: root.lineColor; radius: 3; clip: true
+      ColumnLayout {
+        anchors.fill: parent; anchors.margins: 16; spacing: 8
+        Text {
+          objectName: choice.terminal ? "terminalFontPreview" : "systemFontPreview"
+          Layout.fillWidth: true
+          text: choice.terminal ? "> Hello, world!\n0123456789  {} []" : "A place for everything.\nAa Bb Cc  0123456789"
+          font.family: choice.selectedFamily || root.fontFamily
+          font.pointSize: choice.selectedSize
+          color: root.popupForeground; elide: Text.ElideRight
+          maximumLineCount: 2; wrapMode: Text.Wrap
+        }
+        Item { Layout.fillHeight: true }
+        Caption { Layout.fillWidth: true; text: choice.selectedFamily ? choice.selectedFamily + " · " + choice.selectedSize + " pt" : "Choose a font"; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 2); elide: Text.ElideRight; maximumLineCount: 1 }
       }
     }
     Controls.CheckBox {
@@ -996,7 +995,8 @@ Panel {
               enabled: root.inventoryLoaded && !root.busy; spacing: 16
               RowLayout {
                 Layout.fillWidth: true; spacing: 6
-                FieldLabel { text: "Mode"; Layout.fillWidth: true }
+                Item { Layout.fillWidth: true }
+                FieldLabel { text: "Mode"; Layout.rightMargin: 8 }
                 Repeater {
                   model: ["Automatic", "Light", "Dark"]
                   ActionButton {
@@ -1026,6 +1026,7 @@ Panel {
                 ColumnLayout {
                   Layout.fillWidth: true; spacing: 8
                   RowLayout { Layout.fillWidth: true; FieldLabel { text: "Background"; Layout.fillWidth: true } ActionButton { text: "Undo"; quiet: true; visible: !!(root.appearanceActionStatuses.background || {}).undoAvailable; Accessible.name: "Undo background"; onClicked: root.undoAppearanceAction("background") } }
+                  Picker { accessibleLabel: "Background"; model: root.backgrounds; textRole: "label"; currentIndex: root.backgrounds.findIndex(function(entry) { return entry.id === root.selectedBackgroundId }); displayText: currentIndex >= 0 ? currentText : "Select background"; onActivated: function(index) { root.selectedBackgroundId = root.backgrounds[index].id } }
                   Rectangle {
                     objectName: "wallpaperPreview"
                     Layout.fillWidth: true; implicitHeight: 110; color: root.surfaceColor; border.color: root.lineColor; radius: 3; clip: true
@@ -1038,12 +1039,12 @@ Panel {
                     }
                     Caption { anchors.centerIn: parent; text: "Preview unavailable"; visible: wallpaperImage.status === Image.Error || wallpaperImage.status === Image.Null; color: root.mutedColor }
                   }
-                  Picker { accessibleLabel: "Background"; model: root.backgrounds; textRole: "label"; currentIndex: root.backgrounds.findIndex(function(entry) { return entry.id === root.selectedBackgroundId }); displayText: currentIndex >= 0 ? currentText : "Select background"; onActivated: function(index) { root.selectedBackgroundId = root.backgrounds[index].id } }
                   ResultNotice { Layout.fillWidth: true; kind: "background" }
                 }
                 ColumnLayout {
                   Layout.fillWidth: true; Layout.alignment: Qt.AlignTop; spacing: 8
                   RowLayout { Layout.fillWidth: true; FieldLabel { text: "Icons"; Layout.fillWidth: true } ActionButton { text: "Undo"; quiet: true; visible: !!(root.appearanceActionStatuses.icons || {}).undoAvailable; Accessible.name: "Undo icons"; onClicked: root.undoAppearanceAction("icons") } }
+                  Picker { accessibleLabel: "Icon theme"; model: root.icons; textRole: "displayName"; currentIndex: root.icons.findIndex(function(entry) { return entry.id === root.selectedIconId }); displayText: currentIndex >= 0 ? currentText : "Keep current icons"; onActivated: function(index) { root.selectedIconId = root.icons[index].id } }
                   Rectangle {
                     objectName: "iconPreview"
                     Layout.fillWidth: true; implicitHeight: 110; color: root.surfaceColor; border.color: root.lineColor; radius: 3
@@ -1054,7 +1055,6 @@ Panel {
                     }
                     Caption { anchors.centerIn: parent; text: "No icon samples available"; visible: parent.samples.length === 0; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
                   }
-                  Picker { accessibleLabel: "Icon theme"; model: root.icons; textRole: "displayName"; currentIndex: root.icons.findIndex(function(entry) { return entry.id === root.selectedIconId }); displayText: currentIndex >= 0 ? currentText : "Keep current icons"; onActivated: function(index) { root.selectedIconId = root.icons[index].id } }
                   ResultNotice { Layout.fillWidth: true; kind: "icons" }
                 }
               }
@@ -1067,6 +1067,14 @@ Panel {
               ColumnLayout {
                 objectName: "unlockExamples"
                 Layout.fillWidth: true; spacing: 8
+                Picker {
+                  objectName: "unlockDesignPicker"
+                  accessibleLabel: "Boot unlock artwork"; model: root.unlockDesigns; textRole: "displayName"
+                  currentIndex: root.unlockDesigns.findIndex(function(entry) { return entry.id === root.selectedUnlockId })
+                  displayText: currentIndex >= 0 ? currentText : "No design selected"
+                  enabled: root.unlockDesigns.length > 0
+                  onActivated: function(index) { root.selectedUnlockId = root.unlockDesigns[index].id; root.selectedUnlockPreview = root.unlockDesigns[index].preview || ""; root.unlockSelectionChanged = true }
+                }
                 Rectangle {
                   objectName: "unlockPreviewCard"
                   Layout.fillWidth: true; implicitHeight: Math.max(140, Math.min(220, width * 9 / 16))
@@ -1087,14 +1095,6 @@ Panel {
                     visible: unlockImage.status !== Image.Ready
                     text: !root.unlockDesigns.length ? "No unlock artwork available" : unlockImage.status === Image.Loading ? "Loading artwork…" : "Preview unavailable"
                   }
-                }
-                Picker {
-                  objectName: "unlockDesignPicker"
-                  accessibleLabel: "Boot unlock artwork"; model: root.unlockDesigns; textRole: "displayName"
-                  currentIndex: root.unlockDesigns.findIndex(function(entry) { return entry.id === root.selectedUnlockId })
-                  displayText: currentIndex >= 0 ? currentText : "No design selected"
-                  enabled: root.unlockDesigns.length > 0
-                  onActivated: function(index) { root.selectedUnlockId = root.unlockDesigns[index].id; root.selectedUnlockPreview = root.unlockDesigns[index].preview || ""; root.unlockSelectionChanged = true }
                 }
                 RowLayout {
                   Layout.fillWidth: true

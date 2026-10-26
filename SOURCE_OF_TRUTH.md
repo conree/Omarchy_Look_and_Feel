@@ -20,11 +20,14 @@ with live readiness gates and bounded icon-lookup optimizations. These changes
 are included in the current archive below; their validation is recorded in
 `RELEASE_VALIDATION.md`. Version 0.2.0 also adds `boot_unlock.py` and the self-contained authenticated
 `boot_unlock_helper.py`; desktop-setting writers retain their existing transactions.
-The final runtime/test archive is
-`dca82bb5c9dc6e4d63882c7967ae130c15a9d042327069179bd1ba80723c365e`
+The full-panel VM-tested runtime/test archive is
+`c01b9ad40e7493a7990c3bb749c75e5de20d26e86b00cdcd6b8bb522459d1c43`
 (61 files), with hashes in `Testing/Boot_VM_Lab/tools/finish-runtime-files.json`.
 Boot acceptance is in `Testing/Boot_VM_Lab/results/finish-boot-acceptance.json`.
 Application discovery and Qt manual-registration changes are included in that archive.
+A later presentation-only change moves the terminal monospace checkbox below its
+example. Only `Panel.qml` differs from that archive; current Git source and native
+alignment evidence are authoritative for this refinement.
 
 The October 25 EE Calc-inspired panel runtime/test archive contains 61 files:
 `ea7774d1c2d4e853b90545b6a8cc9b17dd767d3d9207c9ba3763ef0fa9006ec3`.

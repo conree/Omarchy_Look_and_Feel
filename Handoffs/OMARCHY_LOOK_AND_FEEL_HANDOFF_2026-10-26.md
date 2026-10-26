@@ -12,10 +12,13 @@ behavior and evidence. This handoff supersedes the October 25 operational status
 
 - Inline examples throughout Appearance, with separate application/terminal
   examples per theme. Preview buttons and decorative palette bars are removed.
+  All drop-downs now sit below their headings with examples underneath; Mode
+  sits next to the three mode buttons on the right. The monospace filter is below
+  the terminal sample so the two font sample boxes align.
 - Hidden preload, disposable private cache, static image reuse and bounded icon
   lookups. Cached metadata cannot authorize writes. Live inventory supplies all
-  Apply/Undo authority. The latest offscreen test measured 43 ms for first
-  displayed/captured frame and 4 ms for reopening after preload.
+  Apply/Undo authority. The latest offscreen test measured 44 ms for first
+  displayed/captured frame and 3 ms for reopening after preload.
 - Explicit authenticated boot-artwork Apply, exact Undo and interrupted recovery.
   Logo changes preserve Plymouth colours and SDDM. The helper uses staged UKI
   builds, complete embedded-asset checks, actual bootloader checksum checks,
@@ -28,11 +31,14 @@ behavior and evidence. This handoff supersedes the October 25 operational status
 
 ## Validation
 
-Final runtime/test archive:
-`dca82bb5c9dc6e4d63882c7967ae130c15a9d042327069179bd1ba80723c365e`
+Full-panel VM-tested runtime/test archive:
+`c01b9ad40e7493a7990c3bb749c75e5de20d26e86b00cdcd6b8bb522459d1c43`
 (61 files), manifest `Testing/Boot_VM_Lab/tools/finish-runtime-files.json`.
 The final archive also passed real panel Apply/Undo in light and dark modes,
 with 28 captures, preserved drafts and exact application-file restoration.
+A later checkbox-only Panel.qml refinement passed native 820/450 px alignment,
+keyboard and interaction checks; its source hash is recorded in
+`Testing/Release_2026-10-26/font-alignment-source.json`.
 There are 27 isolated test programs. The native mail-lock ownership test must
 run outside the sandbox with its own temporary HOME because UID mapping prevents
 its stale-owner check inside the sandbox. The other 26 pass inside it.

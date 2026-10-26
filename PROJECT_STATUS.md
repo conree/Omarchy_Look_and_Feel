@@ -9,9 +9,14 @@ not imply control of every custom application's fonts or content.
 
 ## Completed
 
+- All drop-downs precede their examples, immediately below the corresponding
+  headings. Mode is grouped on the right with Automatic/Light/Dark. The monospaced
+  filter sits below the terminal sample, aligning both font sample boxes.
+
 - The final 0.2.0 archive passed real light/dark panel Apply and Undo with 28
   captures, all 27 isolated programs in their required environment, and independent
-  source/recovery review. All 61 runtime/test files match that archive.
+  source/recovery review. A subsequent checkbox-only layout refinement passed native wide/narrow geometry,
+  keyboard and interaction checks; backend files remain identical to the archive.
 
 - Boot artwork now has authenticated Apply, exact-file Undo and explicit recovery.
   Each current boot image is staged, checked for the selected artwork and complete
@@ -30,7 +35,7 @@ not imply control of every custom application's fonts or content.
 - Examples now preload with the plugin and reuse a disposable display cache while
   live inventory refreshes. Cache data cannot enable Apply/Undo or override fresh
   defaults; later refreshes preserve drafts. An isolated native Qt test measured
-  43 ms to the first displayed frame after preloading, and 4 ms on reopening.
+  44 ms to the first displayed frame after preloading, and 3 ms on reopening.
   Actual host click latency was not measured. See RELEASE_VALIDATION.md.
 - Each Light/Dark theme preview now contains separate application and terminal
   examples. Native offscreen Qt rendering covers wide/narrow layouts and missing

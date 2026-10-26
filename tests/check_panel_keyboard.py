@@ -119,7 +119,7 @@ start = production.index('  component ActionButton:')
 end = production.index('  component ResultNotice:', start)
 components = production[start:end]
 start = production.index('    Controls.CheckBox {', production.index('  component FontChoice:'))
-end = production.index('\n  }\n\n  KeyboardPanel', start)
+end = production.index('\n    }\n', start) + len('\n    }')
 checkbox = production[start:end].replace('Controls.CheckBox {', 'Controls.CheckBox {\n      x: 12; y: 800', 1)
 focus_qml = '''pragma ComponentBehavior: Bound
 import QtQuick

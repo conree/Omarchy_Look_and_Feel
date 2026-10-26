@@ -41,7 +41,8 @@ font binding; it intentionally does not discard saved application preferences.
 ## Using the panel
 
 The panel has three tabs, with one **Apply changes** button always available
-below the scrolling content:
+below the scrolling content. Each drop-down sits directly below its heading,
+with its example underneath. The Mode label sits beside the three mode buttons:
 
 - **Appearance:** choose Automatic, Light or Dark mode, compare previews of the
   installed light/dark palettes with separate application and terminal examples,

@@ -8,24 +8,26 @@ no host logout or application restart was forced.
 
 ## Version 0.2.0 completion checks
 
-Final runtime/test archive: SHA-256
-`dca82bb5c9dc6e4d63882c7967ae130c15a9d042327069179bd1ba80723c365e`,
+Full-panel VM-tested runtime/test archive: SHA-256
+`c01b9ad40e7493a7990c3bb749c75e5de20d26e86b00cdcd6b8bb522459d1c43`,
 61 files. Manifest: `Testing/Boot_VM_Lab/tools/finish-runtime-files.json`.
 
 The final archive ran the real panel's four desktop Apply steps in light and dark
 modes, with 14 captures per mode (28 total). Tests cover all tabs, constrained
 window sizes, footer placement, scrolling, drafts, refresh, reopening and inline
-boot artwork. Both modes restored all saved application files, desktop settings
+boot artwork. The final layout places all drop-downs above their examples and
+groups Mode with the three buttons on the right. Both modes restored all saved application files, desktop settings
 and prior journals exactly through Undo. Shell logs contain image-picker module, Bluetooth and Qt.atob deprecation
 warnings; no Look & Feel load/type errors were reported.
 This UI test did not select a boot change; privileged boot behavior was tested
-separately below. Evidence: `design-ui-dca82bb5c9dc-{read,logs,undo}-{light,dark}.json`
+separately below. Evidence: `design-ui-c01b9ad40e74-{read,logs,undo}-{light,dark}.json`
 in `Testing/Boot_VM_Lab/results/`.
 
 All 27 isolated programs pass in their required environment: 26 in the sandbox,
 and the native mail-lock ownership test outside it with a temporary HOME.
 The final 20-case production panel interaction check passes after the last status
-wording change. Runtime/test file hashes match the VM archive.
+wording change. All backend files match the VM archive. A later checkbox-position refinement
+is covered by the native checks below.
 
 The exact final boot helper passed two disposable guests: stock with one current
 UKI, and the owner's hardening fixture with two current UKIs. Each passed Apply,
@@ -66,8 +68,8 @@ bounded as described below; identifying an application is not proof its content
 follows desktop settings. Transient operation-lock contention now skips only the
 background check, retaining previous pending actions.
 
-A fresh production-component render measured cache adoption 16 ms, all five images
-ready while hidden at 269 ms, first displayed/captured frame 43 ms, and reopen 4 ms.
+A fresh production-component render measured cache adoption 18 ms, all five images
+ready while hidden at 277 ms, first displayed/captured frame 44 ms, and reopen 3 ms.
 This is an offscreen Qt measurement, excluding compositor/animation timing. The
 final panel retains inline examples and no Preview buttons. Logs and isolated
 check results are in `Testing/Release_2026-10-26/`. The mail-lock native test passes
@@ -82,6 +84,17 @@ resolves to the release source, its manifest is 0.2.0, and the regenerated cache
 contains the new default-logo entry. The fresh shell log has no Look & Feel,
 ReferenceError, TypeError or SyntaxError matches. Unrelated shell warnings remain.
 Reconciliation reports exactly one pending action: the Qt fresh login.
+
+## Final checkbox alignment refinement
+
+After the full-panel VM run, the existing monospace filter was moved below the
+terminal font example. Only Panel.qml differs from the archived runtime. Native
+production-component rendering at 820 px measured both sample boxes at y=146,
+height=158, with the checkbox below at y=316. At 450 px the stacked terminal
+sample ends at y=606 and its checkbox starts at y=618. The system-side filter
+remains hidden. Existing native keyboard/focus and 20 interaction checks pass.
+Evidence: `Testing/Release_2026-10-26/font-alignment.log`,
+`font-alignment-source.json` and `fonts-checkbox-{wide,narrow}.png`.
 
 ## October 26 inline examples
 
