@@ -188,7 +188,7 @@ EXEC_FRAMEWORKS = {
     "lstopo": "native graphical application",
     "mpv": "native media-player UI",
     "mplab_ipe": "Java desktop application",
-    "mullvad-vpn": "Qt application",
+    "mullvad-vpn": "Electron/Chromium",
     "omarchy-launch-docker-tui": "terminal TUI",
     "onlyoffice-desktopeditors": "Electron/Chromium application",
     "phoronix-test-suite": "browser-based application",
@@ -332,17 +332,19 @@ def _binary_toolkit(path: str) -> str | None:
     except (OSError, subprocess.TimeoutExpired):
         return None
     if result.returncode != 0:
-        return None
+        return _script_toolkit(Path(path))
     needed = result.stdout
+    if "libflutter_linux_gtk.so" in needed:
+        return "Flutter"
     if "libgtk-4.so" in needed:
         return "GTK 4"
     if "libgtk-3.so" in needed:
         return "GTK 3"
     if "libgtk-x11-2.0.so" in needed or "libgtk-2.0.so" in needed:
         return "GTK 2"
-    if "libQt6Widgets.so" in needed:
+    if "libQt6Widgets.so" in needed or "libQt6Gui.so" in needed:
         return "Qt 6"
-    if "libQt5Widgets.so" in needed:
+    if "libQt5Widgets.so" in needed or "libQt5Gui.so" in needed:
         return "Qt 5"
     return _script_toolkit(Path(path))
 
@@ -381,7 +383,20 @@ def _framework(app_id: str, name: str, exec_line: str, categories: set[str]) -> 
         return "Chromium web app"
     if "--app-id=" in exec_line and "brave" in exec_line.casefold():
         return "Chromium web app"
+    command = _exec_command(exec_line).casefold()
+    if command in EXEC_FRAMEWORKS and not EXEC_FRAMEWORKS[command].startswith(("Qt", "GTK")):
+        return EXEC_FRAMEWORKS[command]
+    if command in {"electron", "teams-for-linux", "signal-desktop", "obsidian", "cursor"} or re.fullmatch(r"electron[0-9]+", command):
+        return "Electron/Chromium"
     executable = _resolved_exec(exec_line)
+    if executable:
+        try:
+            executable = executable.resolve(strict=True)
+        except (OSError, RuntimeError):
+            executable = None
+    if executable and ((executable.parent / "resources/app.asar").is_file()
+                       or (executable.parent / "lib/resources/app.asar").is_file()):
+        return "Electron/Chromium"
     toolkit = _binary_toolkit(str(executable)) if executable else None
     if toolkit:
         return f"{toolkit} application"
@@ -450,6 +465,8 @@ def _generic_surface(framework: str) -> tuple[str, list[str]]:
             "Inspect app settings for editor.fontFamily/fontSize and app-owned CSS",
             "Electron chrome does not imply that the GTK system font controls app content",
         ]
+    if framework.startswith("Flutter"):
+        return "application-owned Flutter widgets", ["Flutter text styles need an application-specific adapter; GTK linkage only supplies the window shell."]
     if framework == "terminal TUI":
         return "host terminal font", ["The host terminal draws all text for this terminal UI."]
     if framework == "Java desktop application":

@@ -163,7 +163,9 @@ def theme_entries() -> list[dict[str, object]]:
 
 
 def unlock_designs() -> list[dict[str, object]]:
-    """Discover exactly the theme directory Omarchy's unlock setter resolves."""
+    """Installed logo artwork; colours match the existing Plymouth background."""
+    import boot_unlock
+    background = boot_unlock.preview_background()
     candidates: list[dict[str, object]] = []
     names = set(direct_dirs(THEME_DIRS))
     default_logo = OMARCHY_ROOT / "default/plymouth/logo.png"
@@ -185,12 +187,18 @@ def unlock_designs() -> list[dict[str, object]]:
         candidates.append({
             "id": stable_id("unlock", name), "kind": "unlock", "name": name,
             "displayName": display_words(name), "source": [str(unlock_image)],
-            "preview": str(preview), "license": None,
-            "review": "omarchy-theme-unlock", "licenseEvidence": None,
+            "preview": str(unlock_image), "backgroundColor": background, "license": None,
+            "review": "verified-plymouth-artwork", "licenseEvidence": None,
             "provenanceVerified": True, "compatibility": "not-required",
             "developmentOnly": False, "applyMethod": "omarchy", "selectable": True,
             "_logoDigest": digest,
         })
+    if default_digest:
+        candidates.insert(0, {"id": stable_id("unlock", "default"), "kind": "unlock", "name": "default",
+            "displayName": "Default", "source": [str(default_logo)], "preview": str(default_logo),
+            "backgroundColor": background, "review": "verified-plymouth-artwork",
+            "compatibility": "not-required", "applyMethod": "omarchy", "selectable": True,
+            "_logoDigest": default_digest})
     digest_counts: dict[str, int] = {}
     for entry in candidates:
         digest = str(entry.pop("_logoDigest"))
@@ -198,7 +206,7 @@ def unlock_designs() -> list[dict[str, object]]:
         entry["_logoDigest"] = digest
     for entry in candidates:
         digest = str(entry.pop("_logoDigest"))
-        if digest_counts[digest] > 1 or digest == default_digest:
+        if entry["name"] != "default" and (digest_counts[digest] > 1 or digest == default_digest):
             entry["review"] = "ambiguous-plymouth-logo-readback"
             entry["selectable"] = False
     return candidates
@@ -529,6 +537,8 @@ def inventory() -> dict[str, object]:
         for record in records:
             record["selectable"] = catalog_entry_eligible(record)
     status = action_status()
+    import boot_unlock
+    status["unlock"].update(boot_unlock.status())
     import icon_actions
     status["icons"] = icon_actions.status()
     saved_theme = appearance_policy.latest(appearance_policy.LABEL_THEME)
@@ -555,9 +565,9 @@ def inventory() -> dict[str, object]:
         "catalogs": {
             "themes": themes(),
             "unlocks": [entry["name"] for entry in entries["unlocks"]],
-            "fonts": font_families(),
+            "fonts": [entry["name"] for entry in fonts],
             "icons": icon_themes(),
-            "backgrounds": backgrounds(),
+            "backgrounds": [entry["source"] for entry in entries["backgrounds"]],
         },
         "catalog_entries": entries,
         "automatic_schedule_context": automatic_schedule_context(),
@@ -602,8 +612,8 @@ def apply_catalog_action(kind: str, entry_id: str) -> dict[str, object]:
         entry = next((item for item in records if item["id"] == entry_id), None)
         if entry is None:
             raise TransactionError("selected unlock design is no longer available")
-        target = str(entry["name"])
-        allowed = {str(item["name"]) for item in records}
+        import boot_unlock
+        return boot_unlock.apply(str(entry["name"]), entry["source"][0], action_status()["unlock"].get("observedValue"))
     else:
         raise TransactionError("unknown catalog action")
     return apply_action(kind, target, allowed)
@@ -739,7 +749,7 @@ def audit_manual_app(query: str) -> dict[str, object]:
 
 
 def main(argv: list[str]) -> int:
-    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-catalog-action", "rollback-appearance", "reconcile"}
+    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile"}
     if not mutation:
         return _main(argv)
     import appearance_policy
@@ -776,12 +786,24 @@ def main(argv: list[str]) -> int:
                 return _main(argv)
             finally:
                 AUTOMATIC.reset(token)
+    except appearance_policy.OperationBusy as exc:
+        if argv == ["reconcile"]:
+            print(json.dumps({"schemaVersion": 1, "skipped": "busy"}))
+            return 0
+        print(str(exc), file=sys.stderr)
+        return 1
     except (TransactionError, OSError, ValueError, RuntimeError) as exc:
         print(str(exc), file=sys.stderr)
         return 1
 
 
 def _main(argv: list[str]) -> int:
+    if argv == ["recover-unlock"]:
+        import boot_unlock
+        json.dump(boot_unlock.recover(), sys.stdout)
+        sys.stdout.write("\n")
+        return 0
+
     if argv == ["doctor"]:
         import requirements
         result = requirements.inspect()
@@ -815,7 +837,11 @@ def _main(argv: list[str]) -> int:
         sys.stdout.write("\n")
         return 0
     if len(argv) == 2 and argv[0] == "appearance-action-status" and argv[1] in {"theme", "background", "unlock"}:
-        json.dump(action_status()[argv[1]], sys.stdout, ensure_ascii=False, sort_keys=True)
+        status = action_status()[argv[1]]
+        if argv[1] == "unlock":
+            import boot_unlock
+            status.update(boot_unlock.status())
+        json.dump(status, sys.stdout, ensure_ascii=False, sort_keys=True)
         sys.stdout.write("\n")
         return 0
     if len(argv) == 4 and argv[0] == "apply-theme":
@@ -841,6 +867,9 @@ def _main(argv: list[str]) -> int:
             if argv[1] == "theme":
                 from appearance_policy import undo_theme
                 result = undo_theme()
+            elif argv[1] == "unlock":
+                import boot_unlock
+                result = boot_unlock.undo()
             elif argv[1] == "icons":
                 from icon_actions import undo
                 result = undo()
@@ -886,8 +915,15 @@ def _main(argv: list[str]) -> int:
         json.dump({"cleared": True}, sys.stdout)
         sys.stdout.write("\n")
         return 0
-    if argv == ["inventory"]:
-        json.dump(inventory(), sys.stdout, ensure_ascii=False, sort_keys=True)
+    if argv in (["inventory"], ["panel-inventory"]):
+        result = inventory()
+        if argv == ["panel-inventory"]:
+            import panel_preview_cache
+            try:
+                panel_preview_cache.save(result)
+            except OSError:
+                pass  # A read-only/full cache directory must not block live settings.
+        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
         sys.stdout.write("\n")
         return 0
     if len(argv) == 1 and argv[0] == "rollback-ghostty-font":

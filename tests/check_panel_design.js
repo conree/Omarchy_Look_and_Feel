@@ -49,10 +49,10 @@ const draftKeys = ['selectedSystemFontId', 'selectedTerminalFontId', 'selectedSy
   'unlockSelectionChanged', 'onlyMonospacedTerminalFonts'];
 function draft(root) { return Object.fromEntries(draftKeys.map(key => [key, root[key]])); }
 
-function fixture() {
+function fixture({loaded = true} = {}) {
   const queue = [], commands = [];
   const root = {fonts: [], themes: [], backgrounds: [], icons: [], unlockDesigns: [],
-    inventoryLoaded: false, selectedSystemSize: 12, selectedTerminalSize: 12,
+    inventoryLoaded: false, previewCacheLoaded: false, selectedSystemSize: 12, selectedTerminalSize: 12,
     selectedIconId: '', selectedUnlockId: '', selectedUnlockPreview: '',
     onlyMonospacedTerminalFonts: false, unlockSelectionChanged: false, unlockApplyAvailable: false,
     appearanceActionMessages: {theme: '', background: '', icons: '', unlock: ''},
@@ -91,7 +91,6 @@ function fixture() {
     }});
   }
   context.unlockStatusTimer = {start() {}, stop() {}};
-  context.unlockPreviewDialog = {open() {}};
   context.contentViewport = {contentY: 123};
   vm.createContext(context);
   for (const match of panel.matchAll(/^import "([^"\n]+\.js)" as (\w+)/gm)) {
@@ -134,7 +133,7 @@ function fixture() {
   function fonts(output, exitCode, order) {
     finish(context.globalFontProcess, root.finishGlobalFontAction, output, exitCode, order);
   }
-  root.adoptInventory(JSON.stringify(inventory()));
+  if (loaded) root.adoptInventory(JSON.stringify(inventory()));
   return {root, context, commands, flush, appearance, fonts};
 }
 
@@ -160,6 +159,47 @@ function finishAll(f, {fontResult, themeResult} = {}) {
 
 const tests = [];
 function test(name, body) { tests.push([name, body]); }
+
+test('cached examples display before discovery without authorizing Apply or Undo', () => {
+  const f = fixture({loaded: false});
+  f.root.adoptPreviewCache(JSON.stringify({schemaVersion: 1, inventory: inventory()}));
+  assert(f.root.previewCacheLoaded); assert(!f.root.inventoryLoaded);
+  assert.equal(f.root.themes.length, 3); assert.equal(f.root.selectedBackgroundId, 'background:one');
+  assert(!f.root.fontUndoAvailable); assert.deepStrictEqual(plain(f.root.appearanceActionStatuses), {});
+  f.root.applyAllSelectedSettings(); f.root.applySelectedTheme(); f.root.applySelectedIcons();
+  f.root.applySelectedBackground(); f.root.applyGlobalFonts();
+  f.root.undoAppearanceAction('theme'); f.root.undoAppearanceAction('icons'); f.root.undoGlobalFonts();
+  assert.equal(f.commands.length, 0, 'Cached data launched a write');
+  const fresh = inventory(); fresh.preferences.systemFontSizePt = 18;
+  fresh.desiredAppearance.theme.light = 'Draft';
+  f.root.adoptInventory(JSON.stringify(fresh));
+  assert(f.root.inventoryLoaded); assert.equal(f.root.selectedSystemSize, 18);
+  assert.equal(f.root.selectedLightThemeId, 'theme:draft', 'Fresh defaults were shadowed by cache');
+  f.root.selectedSystemSize = 20;
+  f.root.adoptPreviewCache(JSON.stringify({schemaVersion: 1, inventory: inventory()}));
+  f.root.adoptInventory(JSON.stringify(fresh));
+  assert.equal(f.root.selectedSystemSize, 20, 'Late cache or refresh replaced a live draft');
+  const missing = fixture({loaded: false}), cached = inventory();
+  cached.preferences.systemFontSizePt = 24; cached.preferences.terminalFontSizePt = 28;
+  missing.root.adoptPreviewCache(JSON.stringify({schemaVersion: 1, inventory: cached}));
+  cached.preferences.systemFontSizePt = null; cached.preferences.terminalFontSizePt = 99;
+  missing.root.adoptInventory(JSON.stringify(cached));
+  assert.equal(missing.root.selectedSystemSize, 12); assert.equal(missing.root.selectedTerminalSize, 12);
+});
+
+test('invalid preview caches are optional and opening does not duplicate an active scan', () => {
+  const f = fixture({loaded: false});
+  for (const raw of ['{broken', '{}', JSON.stringify({schemaVersion: 2, inventory: inventory()}),
+                     JSON.stringify({schemaVersion: 1, inventory: {catalog_entries: {fonts: [], themes: [], icons: {}}}})]) {
+    f.root.adoptPreviewCache(raw);
+    assert(!f.root.previewCacheLoaded); assert(!f.root.inventoryLoaded); assert.equal(f.root.inventoryError, '');
+  }
+  f.root.refreshInventory(); f.root.open(); f.root.refreshInventory();
+  assert.equal(f.commands.length, 1); assert.equal(f.commands[0].command.at(-1), 'panel-inventory');
+  f.root.adoptInventory(JSON.stringify(inventory()));
+  f.root.adoptPreviewCache(JSON.stringify({schemaVersion: 1, inventory: inventory()}));
+  assert(f.root.inventoryLoaded); assert(!f.root.previewCacheLoaded);
+});
 
 test('global Apply executes all four production actions and never boot unlock', () => {
   const f = fixture(); f.root.selectedUnlockId = 'unlock:preview'; f.root.unlockSelectionChanged = true;
@@ -372,12 +412,24 @@ test('observed current theme follows readback and file updates while preserving 
   assert.equal(f.root.observedTheme, 'Dark');
 });
 
-test('boot preview Apply and Undo are refused even through direct production function calls', () => {
+test('boot actions require capability and use the normal checked process', () => {
   const f = fixture(); f.root.selectedUnlockId = 'unlock:preview';
-  assert.equal(f.root.applySelectedUnlock(false), false); f.root.undoAppearanceAction('unlock');
-  assert.equal(f.context.unlockApplyProcess.running, false);
-  assert.equal(f.commands.filter(row => row.process === 'unlockApplyProcess').length, 0);
-  assert(/readonly property bool unlockApplyAvailable:\s*false/.test(panel));
+  assert.equal(f.root.applySelectedUnlock(false), false);
+  f.root.unlockApplyAvailable = true;
+  assert.equal(f.root.applySelectedUnlock(false), true);
+  assert.deepStrictEqual(plain(f.context.appearanceActionProcess.command.slice(3)), ['apply-catalog-action', 'unlock', 'unlock:preview']);
+  f.appearance({state: 'committed', readback: 'preview'});
+  f.root.undoAppearanceAction('unlock');
+  assert.deepStrictEqual(plain(f.context.appearanceActionProcess.command.slice(3)), ['rollback-appearance', 'unlock']);
+  assert(!panel.includes('omarchy-launch-floating-terminal-with-presentation'));
+});
+
+test('global Apply includes explicitly changed boot artwork last', () => {
+  const f = fixture(); f.root.unlockApplyAvailable = true;
+  f.root.selectedUnlockId = 'unlock:preview'; f.root.unlockSelectionChanged = true;
+  f.root.applyAllSelectedSettings(); f.flush(); finishAll(f);
+  assert.deepStrictEqual(actionSteps(f), ['theme', 'fonts', 'background', 'icons', 'unlock']);
+  assert.equal(f.root.unlockSelectionChanged, false);
 });
 
 let failures = 0;

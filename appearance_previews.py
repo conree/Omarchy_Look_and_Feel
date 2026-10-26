@@ -74,6 +74,11 @@ class IconPreviews:
 
     def _file(self, path, limit):
         try:
+            # Most icon candidates do not exist. Avoid resolving every parent
+            # and symlink until a real file is found; containment is still
+            # checked on the resolved path before it can be returned.
+            if not path.is_file():
+                return None
             resolved = path.resolve(strict=True)
             if not any(resolved.is_relative_to(root) for root in self.roots):
                 return None

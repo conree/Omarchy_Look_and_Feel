@@ -1,13 +1,142 @@
-# Release validation — 2026-10-25
+# Release validation — updated 2026-10-26
 
 This is a tested development candidate for the documented Omarchy baseline,
 not a claim that every Linux application or hardware configuration is supported.
-Boot unlock remains preview-only. Host application appearance after a fresh login
-still needs owner acceptance; no host logout or application restart was forced.
+Version 0.2.0 adds verified boot-artwork Apply/Undo for the supported layout.
+Host application appearance after a fresh login still needs owner acceptance;
+no host logout or application restart was forced.
+
+## Version 0.2.0 completion checks
+
+Final runtime/test archive: SHA-256
+`dca82bb5c9dc6e4d63882c7967ae130c15a9d042327069179bd1ba80723c365e`,
+61 files. Manifest: `Testing/Boot_VM_Lab/tools/finish-runtime-files.json`.
+
+The final archive ran the real panel's four desktop Apply steps in light and dark
+modes, with 14 captures per mode (28 total). Tests cover all tabs, constrained
+window sizes, footer placement, scrolling, drafts, refresh, reopening and inline
+boot artwork. Both modes restored all saved application files, desktop settings
+and prior journals exactly through Undo. Shell logs contain image-picker module, Bluetooth and Qt.atob deprecation
+warnings; no Look & Feel load/type errors were reported.
+This UI test did not select a boot change; privileged boot behavior was tested
+separately below. Evidence: `design-ui-dca82bb5c9dc-{read,logs,undo}-{light,dark}.json`
+in `Testing/Boot_VM_Lab/results/`.
+
+All 27 isolated programs pass in their required environment: 26 in the sandbox,
+and the native mail-lock ownership test outside it with a temporary HOME.
+The final 20-case production panel interaction check passes after the last status
+wording change. Runtime/test file hashes match the VM archive.
+
+The exact final boot helper passed two disposable guests: stock with one current
+UKI, and the owner's hardening fixture with two current UKIs. Each passed Apply,
+independent embedded-artwork extraction, encrypted cold boot, exact boot-file
+Undo, and another encrypted cold boot. An injected mkinitcpio exit 42 was reported
+as failure and restored the original boot bytes without requiring a working builder.
+Evidence: `Testing/Boot_VM_Lab/results/finish-boot-acceptance.json`, including the
+helper source hash, per-phase probes and cold-boot captures. The boot-generated
+random seed is intentionally excluded from cross-boot byte comparisons; EFI
+variables and mount protections are compared immediately around each operation,
+since firmware timing variables legitimately change at boot. System configuration
+remained unchanged. The host boot files were never modified.
+The VM cold-boot captures show text encrypted-root password prompts, not a
+graphical Plymouth logo. They prove bootability and unlock plus independently
+verified embedded artwork bytes; they do not prove the artwork's graphical
+rendering during boot. That remains a host/graphical-boot acceptance limit.
+
+Isolated regressions also cover malformed/truncated PNGs, a stale second UKI,
+partial publication, stale bootloader checksums, intervening kernel changes,
+interrupted transaction recovery, and subprocess timeout, SIGTERM and SIGKILL.
+Independent real-process checks confirmed that no surviving publisher races
+recovery and that SIGTERM stops publication. The GUI uses the ordinary checked
+controller process; no terminal launcher or slug-only success polling remains.
+Old unverified journals remain blocked. The graphical administrator prompt itself
+was not used on the host; guest boot tests ran the exact helper with an explicitly
+identified test-user UID via the lab's authenticated root connection.
+
+Boot artwork changes only the logo, preserving existing Plymouth colours and
+SDDM. Supported preflight is limited to standard unsigned Omarchy UKIs; signed or
+Secure Boot images, enrolled configurations, fallback/custom build options and
+unhandled sections are refused. No claim is made for those untested layouts.
+
+Application discovery regressions cover Python Qt launchers, Qt Gui/Quick-only
+binaries, misleading application names, symlinked Electron launchers and Flutter.
+Manual audits include matching Qt system-font controls and exclude editor-specific
+roles. Native GTK/Qt and application-profile coverage from earlier checks remains
+bounded as described below; identifying an application is not proof its content
+follows desktop settings. Transient operation-lock contention now skips only the
+background check, retaining previous pending actions.
+
+A fresh production-component render measured cache adoption 16 ms, all five images
+ready while hidden at 269 ms, first displayed/captured frame 43 ms, and reopen 4 ms.
+This is an offscreen Qt measurement, excluding compositor/animation timing. The
+final panel retains inline examples and no Preview buttons. Logs and isolated
+check results are in `Testing/Release_2026-10-26/`. The mail-lock native test passes
+outside the sandbox using a temporary HOME; sandbox UID mapping invalidates that
+ownership test, so its sandbox failure is not recorded as a product regression.
+
+Host readback confirms the saved selector is `qt6ct` but the current session still
+uses `gtk3`. The owner must save work and sign out/back in, then check reopened
+applications. This remaining session activation is not automated.
+The tested plugin was activated with a host shell restart. The installed symlink
+resolves to the release source, its manifest is 0.2.0, and the regenerated cache
+contains the new default-logo entry. The fresh shell log has no Look & Feel,
+ReferenceError, TypeError or SyntaxError matches. Unrelated shell warnings remain.
+Reconciliation reports exactly one pending action: the Qt fresh login.
+
+## October 26 inline examples
+
+`Panel.qml` now shows separate application and terminal examples for each theme.
+Native offscreen Qt loaded the production preview components without warnings
+at 820 px and 450 px fixture widths, including missing-palette fallback. The
+17-case panel interaction regression and native keyboard/focus/theme-file tests
+pass, as do the icon, appearance-result and font-result checks. Independent review
+checked the source and rendered samples. These checks cover representative palette
+and font fixtures, not actual application rendering or a new full-panel VM run.
+The October 25 archives below predate this UI-only change.
+
+Boot artwork also appears inline by default; its Preview button, modal and
+collapse toggle are removed. Native offscreen Qt rendered the production section
+with installed Catppuccin/Latte artwork at 820 px and 450 px fixture widths.
+Keyboard selection immediately changed the image; missing-image and empty-catalog
+states rendered correctly. Independent source checks covered current-design
+selection, first-installed fallback, no initial pending change and draft preservation.
+The existing 17 interaction cases and native keyboard checks pass after this change.
+
+## October 26 example-loading performance
+
+The initial instrumented inventory took 4,875 ms, including icon samples
+2,625 ms and application discovery 1,172 ms. These are profiler timings on the
+host files, with inventory-record persistence suppressed and sandbox-limited
+desktop readback; they are not end-to-end desktop latency measurements.
+
+The panel now preloads while closed, reads a bounded disposable display cache,
+and keeps decoded static images. Fresh inventory replaces cached defaults before
+enabling appearance controls or Apply; cache data contains no Undo authority or
+application audits. Duplicate scans on opening are suppressed. Icon lookup
+rejects nonexistent files before resolving paths but still validates containment;
+legacy font/background lists reuse the already-built catalog.
+
+A native offscreen Quickshell fixture loaded the production FileView, adoption
+functions, styled components and Appearance page against the host catalog and
+five installed images. Cache adoption took 17 ms; images were ready while hidden
+at 288 ms. Showing the previously hidden window and capturing its first frame
+took 43 ms; reopening took 4 ms. These exclude shell animation/compositor timing.
+Evidence: `Testing/Panel_Performance/2026-10-26/`. A first run with no cache still
+needs discovery. No measured host click-to-visible guarantee is made.
+
+Independent review covered cache/live ordering, missing live font preferences,
+preserved drafts, action gates, atomic private persistence, icon containment and
+the rendered examples. Nineteen interaction cases, cache-persistence checks,
+native keyboard/focus/file-watcher checks, icon previews and result handling pass.
+Host activation required a shell restart after plugin rescan did not start the
+new preload path. After restart, the schema-1 cache was created (250,757 bytes;
+31 themes, 26 unlock designs, 364 fonts, 74 icon themes, 145 backgrounds), with
+no matching plugin/QML errors in the fresh shell log. This confirms activation,
+not a host click-latency measurement.
 
 ## Candidate and environment
 
-Current panel redesign runtime/test archive: SHA-256
+October 25 panel redesign runtime/test archive: SHA-256
 `ea7774d1c2d4e853b90545b6a8cc9b17dd767d3d9207c9ba3763ef0fa9006ec3`,
 61 files. Manifest: `Testing/Boot_VM_Lab/tools/design-release-runtime-files.json`.
 Backend appearance writers are unchanged from the earlier Qt-safe candidate.
@@ -204,9 +333,9 @@ private under `Testing/Boot_VM_Lab/results/`. Main records include
 They are ignored by Git; this document summarizes reproducible scope without
 publishing private guest data.
 
-During this continuation no other installed OS was enumerated, mounted or accessed. No host sudo, boot
+During this continuation no other installed OS was enumerated, mounted or accessed. No host boot
 rebuild, browser-policy write, compositor-scale change or forced logout was used.
-Boot unlock Apply/Undo/recovery remains disabled. VM success does not establish
+Only explicit authenticated boot-artwork actions can change boot files; automatic reconciliation cannot. VM success does not establish
 all Omarchy versions, hardware, app-specific rendering or custom profile paths.
 Older Git commits still contain the four removed, unused owner-theme images;
 repository history was not rewritten.

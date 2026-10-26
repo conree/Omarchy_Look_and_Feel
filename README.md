@@ -1,6 +1,6 @@
 # Omarchy Look & Feel
 
-Omarchy bar plugin for the one-source-of-truth appearance project.
+Version **0.2.0**. One Omarchy panel for desktop and terminal fonts, themes, backgrounds, icons and boot artwork.
 
 ## Install
 
@@ -44,9 +44,12 @@ The panel has three tabs, with one **Apply changes** button always available
 below the scrolling content:
 
 - **Appearance:** choose Automatic, Light or Dark mode, compare previews of the
-  installed light/dark palettes, and select a background and optional icon theme.
+  installed light/dark palettes with separate application and terminal examples,
+  and select a background and optional icon theme. Application examples show menus,
+  tabs and a file list; terminal examples use the selected terminal font and palette.
   Background thumbnails and icon samples use your installed files. Boot artwork
-  is in a collapsed **Preview only** section; it is never included in Apply.
+  is shown inline by default; choosing a logo updates the image immediately.
+  A changed selection is applied last and requests administrator authentication.
 - **Fonts:** compare samples of the selected system and terminal fonts at their
   chosen sizes. The monospace filter belongs to the terminal selector. Samples
   demonstrate the font in this panel; they do not verify another application.
@@ -58,12 +61,19 @@ Switching tabs, reopening the panel and refreshing the catalog preserve drafts
 while the plugin instance remains loaded. Drafts are not saved across a shell
 restart. **Apply changes** uses selections from all three tabs. Section results
 describe the last action; expand **Details** for the full result. Undo remains
-separate for themes, fonts, backgrounds and icons. Font Undo refreshes the font
+separate for themes, fonts, backgrounds, icons and boot artwork. Interrupted
+boot operations expose an explicit **Recover boot artwork** action. Font Undo refreshes the font
 choices without discarding unrelated drafts.
 
 The panel derives accents from the active palette, checks text contrast, and
 uses the desktop system font for its controls. Light and dark themes share the
 same layout; smaller panels stack the previews into a single column.
+
+Examples are prepared when the plugin loads and reused when the panel opens.
+A disposable preview catalog under `~/.cache/omarchy-look-and-feel/` (or
+`XDG_CACHE_HOME`) provides examples while live settings refresh in the background.
+Apply and appearance selectors wait for that first live refresh; cached data
+never enables Apply or Undo. The first run without a cache still needs discovery.
 
 ## Apply and automatic reconciliation
 
@@ -77,7 +87,8 @@ nothing to appearance until a choice has been applied. Background is applied
 separately. An installed icon theme can be applied independently across desktop,
 GTK and available Qt integrations, with its own Undo.
 
-The panel runs Theme, Fonts, Background, then Icons when an icon is selected. A failed step stops later steps;
+The panel runs Theme, Fonts, Background, optional Icons, then explicitly changed
+boot artwork with administrator authentication. A failed step stops later steps;
 completed steps remain available to Undo. Pending application work is named.
 Saved configuration, requested reloads, and rendered appearance are separate
 results: a successful file write is never proof of what an application displays.
@@ -98,7 +109,7 @@ choices. They are not host-specific scripts. Unknown application-owned controls,
 custom command-line configuration overrides, Flatpak/Snap-specific config paths,
 and unsupported schemas still need adapters; generic toolkit inheritance cannot
 force every application to comply. The inventory does not claim exhaustive app
-discovery. Manual audit registers only control surfaces it can verify.
+discovery. Manual audit registers identified GTK, Qt 5/6 and supported terminal font surfaces. App-owned editor controls remain separate. Runtime detection distinguishes Electron/Flutter content from their GTK window shell and recognizes Python Qt launchers and Qt Quick binaries.
 
 PySide6 validates Qt font serialization and reads integration metadata without loading the integration libraries. Both qt5ct and qt6ct must offer a common selector before the plugin changes the desktop integration. Unsupported/custom Lua configurations remain pending. The background timer cannot introduce this override: it needs an explicit Apply. Apply and Undo require a fresh login when the selector changes; existing processes keep their old environment. The plugin does not restart the session or change activation variables live.
 
@@ -141,8 +152,22 @@ preserved. This does not promise that a bare `monospace` request follows the
 terminal choice: earlier distribution rules can already have resolved that
 generic family. Supported applications receive explicit selected families.
 
-Boot unlock remains preview-only. Apply, Undo, and automatic boot recovery are
-blocked in both UI and backend. Appearance reconciliation does not enable them.
+Boot unlock artwork has explicit Apply, Undo and interrupted-operation recovery.
+Selecting a different logo includes it as the last Apply step and opens the normal
+administrator authentication prompt. The preview shows that logo against the
+existing boot background; Plymouth colours and the login-screen theme are preserved.
+The backend builds each current UKI in a private staging directory, verifies its
+embedded Plymouth assets and bootloader checksum, then publishes it under the
+standard boot-partition lock. Undo restores saved bytes and refuses intervening
+kernel or configuration changes. Background reconciliation never performs boot work.
+
+This feature supports the standard unsigned Omarchy UKI layout on `/boot`, with
+one or multiple installed kernels. Secure Boot/signed images, enrolled Limine
+configurations, fallback/custom UKI options and unhandled image sections are
+refused before changes. It requires `pkexec`, `mkinitcpio`, `lsinitcpio` and
+`limine-entry-tool`; detailed privileged preflight runs after authentication.
+Recovery backups remain root-private under `/var/lib/omarchy-look-and-feel`.
+Older unverified unlock journals are preserved and cannot authorize Undo.
 
 An optional **Only show monospaced fonts** filter uses Fontconfig metadata and
 retains the current selection. Inventory and preferences are stored under XDG
@@ -167,6 +192,8 @@ The source of owner requirements is [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md).
 - `theme_runtime.py`: capability-checked headless generation refresh.
 - `Panel.qml`: tabbed appearance controls, previews, built-in Help, the single
   **Apply changes** action, Undo controls, and the missed-app audit workflow.
+- `boot_unlock.py` / `boot_unlock_helper.py`: explicit authenticated, staged and verified boot-artwork transactions.
+- `panel_preview_cache.py`: disposable private display cache; it never authorizes writes.
 - `appearance_previews.py`: read-only palette previews and bounded installed-icon
   sample resolution, including icon-theme inheritance.
 - `controller.py`: application/catalog discovery, global font routes, and

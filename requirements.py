@@ -44,7 +44,7 @@ def inspect():
     found=plugins()
     add('Shared Qt 5/6 integration', bool(found.get(5,set()) & found.get(6,set())), ['qt'], 'Install compatible qt5ct and qt6ct packages, then press Apply and sign out and back in once.')
     return {'checks':checks, 'ready':all(row['available'] for row in checks),
-            'bootUnlock':'preview-only', 'renderedAppearanceVerified':False}
+            'bootUnlock':'explicit administrator approval; standard unsigned Omarchy UKIs only', 'renderedAppearanceVerified':False}
 
 
 def require(area):

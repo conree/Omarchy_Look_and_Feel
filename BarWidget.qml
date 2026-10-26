@@ -80,6 +80,7 @@ BarWidget {
     }
     try {
       var result = JSON.parse(reconcileProcess.outputText)
+      if (result.schemaVersion === 1 && result.skipped === "busy") return
       if (result.schemaVersion !== 1 || !Array.isArray(result.pendingApplications)) throw new Error("Invalid reconciliation result")
       root.reconciliationFailed = false
       root.reconciliationPending = result.pendingApplications
@@ -164,7 +165,9 @@ BarWidget {
 
   Loader {
     id: panelLoader
-    active: false
+    // Prepare the catalog and decode static example images before the first
+    // click. The panel remains closed until explicitly requested.
+    active: true
     source: Qt.resolvedUrl("Panel.qml")
     visible: false
     onLoaded: {

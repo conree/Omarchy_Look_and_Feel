@@ -68,6 +68,10 @@ def update(section, value):
     return encode('appearance-policy', data)
 
 
+class OperationBusy(tx.TransactionError):
+    """Another foreground action or monitor owns the appearance operation lock."""
+
+
 @contextmanager
 def operation_lock():
     directory = tx.transactions_path().parent
@@ -78,7 +82,7 @@ def operation_lock():
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError as exc:
-            raise tx.TransactionError('another appearance operation is in progress; retry shortly') from exc
+            raise OperationBusy('another appearance operation is in progress; retry shortly') from exc
         yield
     finally:
         os.close(fd)

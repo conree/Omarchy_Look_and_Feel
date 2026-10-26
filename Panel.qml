@@ -66,6 +66,12 @@ Panel {
   property string selectedBackgroundId: ""
   property string selectedIconId: ""
   property bool inventoryLoaded: false
+  property bool previewCacheLoaded: false
+  readonly property string previewCachePath: {
+    var configured = Quickshell.env("XDG_CACHE_HOME")
+    return (configured && configured.charAt(0) === "/" ? configured : Quickshell.env("HOME") + "/.cache")
+      + "/omarchy-look-and-feel/panel-previews.json"
+  }
   property string manualAppQuery: ""
   property string manualAppStatus: ""
   property bool manualAppActionRunning: false
@@ -75,7 +81,7 @@ Panel {
   property bool fontUndoAvailable: false
   property bool fontActionNeedsAttention: false
   property bool themeActionNeedsAttention: false
-  readonly property bool unlockApplyAvailable: false
+  readonly property bool unlockApplyAvailable: root.inventoryLoaded && !!(root.appearanceActionStatuses.unlock || {}).applyAvailable
   property bool globalApplyRunning: false
   property string globalApplyStatus: ""
   property var globalApplySteps: []
@@ -86,18 +92,10 @@ Panel {
   property bool appearanceAuditRunning: false
   property bool appearanceActionRunning: false
   property string appearanceActionKind: ""
-  property string unlockBaselineTransaction: ""
-  property string unlockRequestedSlug: ""
-  property string unlockOperation: "apply"
-  property int unlockStatusPollCount: 0
-  property int unlockStatusExitCode: 0
-  property bool unlockStatusPollHandled: false
-  property bool unlockStatusProcessExited: false
   property var appearanceActionStatuses: ({})
   property var appearanceActionMessages: ({ theme: "", background: "", icons: "", unlock: "" })
 
   property int activeTab: 0
-  property bool unlockExpanded: false
   property string inventoryError: ""
   property bool refreshFontSelection: false
   property bool applyFailed: false
@@ -220,7 +218,7 @@ Panel {
   }
 
   function runAppearanceAction(kind, args, fromGlobalApply) {
-    if (root.appearanceActionRunning || root.fontActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning
+    if (!root.inventoryLoaded || root.appearanceActionRunning || root.fontActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning
         || (root.globalApplyRunning && !fromGlobalApply)) return false
     root.appearanceActionKind = kind
     root.setSectionResult(kind, "working", "Saving settings…")
@@ -266,26 +264,8 @@ Panel {
   }
 
   function launchUnlockCommand(args, expectedSlug, operation, fromGlobalApply) {
-    if (!root.unlockApplyAvailable) {
-      root.appearanceActionMessages = Object.assign({}, root.appearanceActionMessages,
-        { unlock: "Boot unlock is preview-only while boot rebuild verification is being repaired." })
-      return false
-    }
-    if (root.appearanceActionRunning || root.fontActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning
-        || (root.globalApplyRunning && !fromGlobalApply)) return false
-    root.appearanceActionKind = "unlock"
-    root.unlockBaselineTransaction = String((root.appearanceActionStatuses.unlock || {}).transaction || "")
-    root.unlockRequestedSlug = expectedSlug
-    root.unlockOperation = operation
-    root.unlockStatusPollCount = 0
-    var messages = Object.assign({}, root.appearanceActionMessages)
-    messages.unlock = "Applying boot unlock design…"
-    root.appearanceActionMessages = messages
-    root.appearanceActionRunning = true
-    unlockApplyProcess.command = ["/usr/bin/omarchy-launch-floating-terminal-with-presentation", "/usr/bin/python3", "-B",
-      localPath(Qt.resolvedUrl("controller.py"))].concat(args)
-    unlockApplyProcess.running = true
-    return true
+    if (!root.unlockApplyAvailable) return false
+    return root.runAppearanceAction("unlock", args, fromGlobalApply)
   }
 
   function applySelectedUnlock(fromGlobalApply) {
@@ -325,12 +305,13 @@ Panel {
   }
 
   function refreshInventory() {
-    inventoryProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "inventory"]
+    if (inventoryProcess.running) return
+    inventoryProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "panel-inventory"]
     inventoryProcess.running = true
   }
 
   function applyGlobalFonts(fromGlobalApply) {
-    if (root.fontActionRunning || root.appearanceActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning
+    if (!root.inventoryLoaded || root.fontActionRunning || root.appearanceActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning
         || (root.globalApplyRunning && !fromGlobalApply) || !root.selectedSystemFontId || !root.selectedTerminalFontId) return false
     root.setSectionResult("fonts", "working", "Saving font settings…")
     root.fontActionStatus = "Applying the selected global font settings…"
@@ -372,7 +353,7 @@ Panel {
   }
 
   function applyAllSelectedSettings() {
-    if (root.globalApplyRunning || root.appearanceActionRunning || root.fontActionRunning
+    if (!root.inventoryLoaded || root.globalApplyRunning || root.appearanceActionRunning || root.fontActionRunning
         || root.manualAppActionRunning || root.manualAuditClearRunning) return
     if (!root.selectedSystemFontId || !root.selectedTerminalFontId
         || !root.selectedLightThemeId || !root.selectedDarkThemeId || !root.selectedBackgroundId) {
@@ -396,11 +377,9 @@ Panel {
     if (root.globalApplyStepIndex >= root.globalApplySteps.length) {
       var includedUnlock = root.globalApplySteps.indexOf("unlock") >= 0
       root.globalApplyRunning = false
-      root.globalApplyStatus = includedUnlock
-        ? "The selected theme, fonts, background, and boot unlock design were applied."
-        : ((root.fontActionNeedsAttention || root.themeActionNeedsAttention)
-            ? "Settings saved. Some applications need attention; see Applications. Boot unlock was not applied."
-            : "Settings saved and configuration read back. Application rendering still needs checking. Boot unlock was not applied.")
+      root.globalApplyStatus = (root.fontActionNeedsAttention || root.themeActionNeedsAttention)
+        ? "Settings saved. Some applications need attention; see Applications."
+        : (includedUnlock ? "Settings saved, including verified boot artwork." : "Settings saved.")
       return
     }
     var step = root.globalApplySteps[root.globalApplyStepIndex]
@@ -433,60 +412,8 @@ Panel {
     Qt.callLater(root.applyNextGlobalStep)
   }
 
-  function handleUnlockStatusPoll() {
-    if (unlockStatusProcess.running || !root.unlockStatusProcessExited || root.unlockStatusPollHandled) return
-    if (!unlockStatusProcess.statusRead) {
-      if (root.unlockStatusPollCount < 40) return
-      root.unlockStatusPollHandled = true
-      unlockStatusPoll.stop()
-      root.appearanceActionRunning = false
-      var missing = Object.assign({}, root.appearanceActionMessages)
-      missing.unlock = "The selected boot unlock design was not verified."
-      root.appearanceActionMessages = missing
-      if (root.globalApplyRunning && root.globalApplyCurrentStep === "unlock")
-        Qt.callLater(function() { root.finishGlobalApplyStep(false, missing.unlock) })
-      return
-    }
-
-    var status = unlockStatusProcess.parsedStatus || ({})
-    var observed = String(status.observedValue || "")
-    if (root.unlockStatusExitCode === 0 && observed === root.unlockRequestedSlug) {
-      root.unlockStatusPollHandled = true
-      unlockStatusPoll.stop()
-      root.appearanceActionRunning = false
-      var messages = Object.assign({}, root.appearanceActionMessages)
-      if (root.unlockOperation === "undo") {
-        messages.unlock = "Restored the previous boot unlock design."
-        root.unlockSelectionChanged = false
-        var restoredUnlock = root.unlockDesigns.find(function(entry) { return String(entry.name).toLowerCase().replace(/ /g, "-") === observed })
-        if (restoredUnlock) root.selectedUnlockId = restoredUnlock.id
-      } else {
-        messages.unlock = status.transaction && status.transaction !== root.unlockBaselineTransaction
-          ? "Applied and verified the selected boot unlock design."
-          : "The selected boot unlock design is already active."
-      }
-      root.appearanceActionMessages = messages
-      root.refreshInventory()
-      Qt.callLater(root.runAppearanceAudit)
-      if (root.globalApplyRunning && root.globalApplyCurrentStep === "unlock")
-        Qt.callLater(function() { root.finishGlobalApplyStep(true, messages.unlock) })
-      return
-    }
-
-    root.unlockStatusPollHandled = true
-    if (root.unlockStatusPollCount >= 40) {
-      unlockStatusPoll.stop()
-      root.appearanceActionRunning = false
-      var pending = Object.assign({}, root.appearanceActionMessages)
-      pending.unlock = "The selected boot unlock design was not verified."
-      root.appearanceActionMessages = pending
-      if (root.globalApplyRunning && root.globalApplyCurrentStep === "unlock")
-        Qt.callLater(function() { root.finishGlobalApplyStep(false, pending.unlock) })
-    }
-  }
-
   function undoGlobalFonts() {
-    if (root.fontActionRunning || root.appearanceActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning || root.globalApplyRunning) return
+    if (!root.inventoryLoaded || root.fontActionRunning || root.appearanceActionRunning || root.manualAppActionRunning || root.manualAuditClearRunning || root.globalApplyRunning) return
     root.setSectionResult("fonts", "working", "Restoring font settings…")
     root.fontActionStatus = "Restoring the previous global font settings…"
     root.fontActionRunning = true
@@ -571,13 +498,27 @@ Panel {
     }
   }
 
-  function adoptInventory(raw) {
+  function adoptPreviewCache(raw) {
+    if (root.inventoryLoaded || root.previewCacheLoaded || String(raw).length > 8 * 1024 * 1024) return
+    try {
+      var cached = JSON.parse(String(raw || "{}"))
+      if (cached.schemaVersion !== 1 || !cached.inventory) return
+      root.adoptInventory(JSON.stringify(cached.inventory), true)
+    } catch (e) {} // Missing/obsolete cache falls back to live discovery.
+  }
+
+  function adoptInventory(raw, previewOnly) {
+    if (previewOnly && root.inventoryLoaded) return
     try {
       var data = JSON.parse(String(raw || "{}"))
       if (!data || !data.catalog_entries || !Array.isArray(data.catalog_entries.fonts) || !Array.isArray(data.catalog_entries.themes)) throw new Error("Invalid inventory")
       var entries = data.catalog_entries
-      root.inventoryError = ""
-      root.applicationRecords = ((data.font_application_inventory || {}).desktopApplications || []).filter(function(app) { return !app.hidden && !app.noDisplay && app.launchable !== false }).sort(function(a, b) { return a.name.localeCompare(b.name) })
+      if (!["unlocks", "backgrounds", "icons"].every(function(kind) { return !entries[kind] || Array.isArray(entries[kind]) })) throw new Error("Invalid catalog")
+      var statuses = data.appearance_action_status || ({})
+      if (!previewOnly) {
+        root.inventoryError = ""
+        root.applicationRecords = ((data.font_application_inventory || {}).desktopApplications || []).filter(function(app) { return !app.hidden && !app.noDisplay && app.launchable !== false }).sort(function(a, b) { return a.name.localeCompare(b.name) })
+      }
       fonts = entries.fonts || []
       themes = (entries.themes || []).filter(function(entry) { return entry.selectable })
       unlockDesigns = (entries.unlocks || []).filter(function(entry) { return entry.selectable })
@@ -593,11 +534,13 @@ Panel {
       })
       icons = (entries.icons || []).filter(function(entry) { return entry.selectable })
       var resetIconSelection = !inventoryLoaded
-      appearanceActionStatuses = data.appearance_action_status || ({})
-      root.observedTheme = String((appearanceActionStatuses.theme || {}).observedValue || "")
-      fontUndoAvailable = data.global_font_undo_available === true
-      if (!lastAppliedThemeSetThisSession && appearanceActionStatuses.theme && appearanceActionStatuses.theme.expectedValue)
-        lastAppliedTheme = String(appearanceActionStatuses.theme.expectedValue)
+      if (!previewOnly) {
+        appearanceActionStatuses = statuses
+        root.observedTheme = String((statuses.theme || {}).observedValue || "")
+        fontUndoAvailable = data.global_font_undo_available === true
+        if (!lastAppliedThemeSetThisSession && statuses.theme && statuses.theme.expectedValue)
+          lastAppliedTheme = String(statuses.theme.expectedValue)
+      }
 
       function idFor(records, name) {
         var entry = records.find(function(item) { return item.name === name })
@@ -608,6 +551,8 @@ Panel {
         selectedSystemFontId = (data.preferences && data.preferences.systemFontId) || (fonts.length ? fonts[0].id : "")
         selectedTerminalFontId = (data.preferences && data.preferences.terminalFontId)
           || (fonts.length ? fonts[0].id : "")
+        selectedSystemSize = 12
+        selectedTerminalSize = 12
         if (data.preferences && Number.isInteger(data.preferences.systemFontSizePt)
             && data.preferences.systemFontSizePt >= 6 && data.preferences.systemFontSizePt <= 48)
           selectedSystemSize = data.preferences.systemFontSizePt
@@ -621,18 +566,20 @@ Panel {
           selectedLightThemeId = idFor(themes, savedTheme.light)
           selectedDarkThemeId = idFor(themes, savedTheme.dark)
         } else {
-          var activeTheme = (appearanceActionStatuses.theme || {}).observedValue
+          var activeTheme = (statuses.theme || {}).observedValue
           selectedLightThemeId = idFor(themes, activeTheme) || (themes.length ? themes[0].id : "")
           selectedDarkThemeId = selectedLightThemeId
         }
-        selectedUnlockId = ""
-        selectedUnlockPreview = ""
-        var activeBackground = (appearanceActionStatuses.background || {}).observedValue
+        var activeUnlock = (statuses.unlock || {}).observedValue
+        var initialUnlock = unlockDesigns.find(function(entry) { return entry.name === activeUnlock }) || unlockDesigns[0]
+        selectedUnlockId = initialUnlock ? initialUnlock.id : ""
+        selectedUnlockPreview = initialUnlock ? initialUnlock.preview || "" : ""
+        var activeBackground = (statuses.background || {}).observedValue
         var preferredBackground = backgrounds.find(function(entry) { return entry.source === activeBackground })
         selectedBackgroundId = preferredBackground ? preferredBackground.id : (backgrounds.length ? backgrounds[0].id : "")
-        inventoryLoaded = true
+        if (!previewOnly) inventoryLoaded = true
       }
-      if (root.refreshFontSelection) {
+      if (!previewOnly && root.refreshFontSelection) {
         selectedSystemFontId = (data.preferences || {}).systemFontId || selectedSystemFontId
         selectedTerminalFontId = (data.preferences || {}).terminalFontId || selectedTerminalFontId
         selectedSystemSize = (data.preferences || {}).systemFontSizePt || selectedSystemSize
@@ -640,9 +587,10 @@ Panel {
         root.refreshFontSelection = false
       }
       root.adoptIconSelection(data.desiredAppearance && data.desiredAppearance.icons,
-        (appearanceActionStatuses.icons || {}).observedValue, resetIconSelection)
+        (statuses.icons || {}).observedValue, resetIconSelection)
+      if (previewOnly) root.previewCacheLoaded = true
     } catch (e) {
-      root.inventoryError = "Could not refresh the catalog. Your selections are kept; try opening the panel again."
+      if (!previewOnly) root.inventoryError = "Could not refresh the catalog. Your selections are kept; try opening the panel again."
     }
   }
 
@@ -767,6 +715,96 @@ Panel {
     }
     Caption { Layout.fillWidth: true; visible: notice.expanded; text: notice.result.detail || ""; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 1) }
   }
+  component ThemeSampleText: Text {
+    required property var sample
+    color: sample.foreground
+    font.family: sample.systemFamily
+    font.pixelSize: sample.sampleSize
+    textFormat: Text.PlainText
+    elide: Text.ElideRight
+  }
+  component ThemeExample: Rectangle {
+    id: example
+    property bool terminal: false
+    property var preview: ({})
+    readonly property color foreground: preview.foreground || root.popupForeground
+    readonly property color background: preview.background || root.surfaceColor
+    readonly property color accent: preview.accent || foreground
+    readonly property color chrome: Qt.tint(background, Qt.rgba(foreground.r, foreground.g, foreground.b, 0.07))
+    readonly property color rule: Qt.tint(background, Qt.rgba(foreground.r, foreground.g, foreground.b, 0.18))
+    readonly property int sampleSize: Math.max(11, Math.round(root.controlFontPixelSize * 0.8))
+    readonly property string systemFamily: root.entryFor(root.fonts, root.selectedSystemFontId).name || root.fontFamily
+    readonly property string terminalFamily: root.entryFor(root.fonts, root.selectedTerminalFontId).name || "monospace"
+    Layout.fillWidth: true
+    implicitHeight: exampleContent.implicitHeight + 2
+    color: background; border.color: rule; radius: 3; clip: true
+    Accessible.role: Accessible.Graphic
+    Accessible.name: terminal ? "Terminal theme example" : "Application theme example"
+
+    ColumnLayout {
+      id: exampleContent
+      anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+      anchors.margins: 1; spacing: 0
+      Rectangle {
+        Layout.fillWidth: true; implicitHeight: example.sampleSize + 16
+        color: example.chrome
+        RowLayout {
+          anchors.fill: parent; anchors.leftMargin: 10; anchors.rightMargin: 10; spacing: 8
+          ThemeSampleText { sample: example; Layout.fillWidth: true; text: example.terminal ? "Terminal" : "Application"; font.weight: Font.Medium }
+          ThemeSampleText { sample: example; text: "−  □  ×" }
+        }
+      }
+      ColumnLayout {
+        Layout.fillWidth: true; spacing: 0; visible: !example.terminal && !!example.preview.background
+        ThemeSampleText { sample: example; Layout.fillWidth: true; Layout.margins: 8; text: "File    Edit    View    Go    Help" }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: example.rule }
+        RowLayout {
+          Layout.fillWidth: true; Layout.leftMargin: 8; Layout.rightMargin: 8; Layout.topMargin: 6; Layout.bottomMargin: 6; spacing: 10
+          Rectangle {
+            implicitWidth: tabLabel.implicitWidth + 18; implicitHeight: tabLabel.implicitHeight + 10
+            color: example.chrome; radius: 2
+            ThemeSampleText { id: tabLabel; sample: example; anchors.centerIn: parent; text: "Projects  ×" }
+            Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom; height: 2; color: example.accent }
+          }
+          ThemeSampleText { sample: example; Layout.fillWidth: true; text: "‹  ›    ~/Projects" }
+        }
+        Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: example.rule }
+        RowLayout {
+          Layout.fillWidth: true; spacing: 0
+          ColumnLayout {
+            Layout.preferredWidth: example.width * 0.35; Layout.margins: 8; spacing: 5
+            ThemeSampleText { sample: example; Layout.fillWidth: true; text: "Places"; font.weight: Font.DemiBold }
+            ThemeSampleText { sample: example; Layout.fillWidth: true; text: "Home Folder" }
+            ThemeSampleText { sample: example; Layout.fillWidth: true; text: "Documents" }
+          }
+          Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: example.rule }
+          ColumnLayout {
+            Layout.fillWidth: true; Layout.margins: 8; spacing: 5
+            ThemeSampleText { sample: example; Layout.fillWidth: true; text: "Name"; font.weight: Font.DemiBold }
+            ThemeSampleText { sample: example; Layout.fillWidth: true; text: "src/" }
+            ThemeSampleText { sample: example; Layout.fillWidth: true; text: "preview.py" }
+          }
+        }
+      }
+      Text {
+        Layout.fillWidth: true; Layout.margins: 10
+        visible: example.terminal && !!example.preview.background
+        font.family: example.terminalFamily; font.pixelSize: example.sampleSize
+        color: example.foreground; textFormat: Text.RichText
+        wrapMode: Text.NoWrap; clip: true
+        text: "<font color='" + example.accent + "'>~/Projects</font> $ python"
+          + "<br>&gt;&gt;&gt; theme = <font color='" + ((example.preview.swatches || [])[2] || example.foreground) + "'>&quot;My desktop&quot;</font>"
+          + "<br>&gt;&gt;&gt; <font color='" + ((example.preview.swatches || [])[4] || example.foreground) + "'>preview</font>(theme)"
+          + "<br>My desktop"
+          + "<br>&gt;&gt;&gt; ▌"
+      }
+      ThemeSampleText {
+        sample: example
+        Layout.fillWidth: true; Layout.margins: 10
+        visible: !example.preview.background; text: "Preview unavailable"
+      }
+    }
+  }
   component ThemeChoice: ColumnLayout {
     id: choice
     property string heading: ""
@@ -775,30 +813,23 @@ Panel {
     readonly property var entry: root.entryFor(root.themes, selectedId)
     readonly property var preview: entry.preview || ({})
     Layout.fillWidth: true
+    Layout.alignment: Qt.AlignTop
     spacing: 8
     RowLayout {
       Layout.fillWidth: true
       FieldLabel { text: choice.heading; Layout.fillWidth: true }
       Caption { objectName: choice.light ? "lightThemeActiveBadge" : "darkThemeActiveBadge"; text: "Active now"; visible: !!choice.entry.name && choice.entry.name === root.observedTheme; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 2) }
     }
-    Rectangle {
+    ColumnLayout {
       objectName: choice.light ? "lightThemePreview" : "darkThemePreview"
-      Layout.fillWidth: true; implicitHeight: 116
-      color: choice.preview.background || root.surfaceColor
-      border.color: root.lineColor; radius: 3; clip: true
-      ColumnLayout {
-        anchors.fill: parent; anchors.margins: 14; spacing: 9
-        RowLayout {
-          spacing: 5
-          Repeater { model: 3; Rectangle { required property int index; width: 6; height: 6; radius: 3; color: choice.preview.foreground || root.mutedColor; opacity: 0.2 + index * 0.1 } }
-          Item { Layout.fillWidth: true }
-          Text { text: "Window preview"; color: choice.preview.foreground || root.mutedColor; font.family: root.fontFamily; font.pixelSize: 11 }
-        }
-        Text { Layout.fillWidth: true; text: choice.entry.preview ? "Make it feel like yours." : "Preview unavailable"; color: choice.preview.foreground || root.popupForeground; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize + 1; elide: Text.ElideRight }
-        Row {
-          spacing: 6
-          Repeater { model: choice.preview.swatches || []; Rectangle { required property var modelData; width: 19; height: 12; radius: 2; color: modelData } }
-        }
+      Layout.fillWidth: true; spacing: 8
+      ThemeExample {
+        objectName: choice.light ? "lightApplicationThemePreview" : "darkApplicationThemePreview"
+        preview: choice.preview
+      }
+      ThemeExample {
+        objectName: choice.light ? "lightTerminalThemePreview" : "darkTerminalThemePreview"
+        terminal: true; preview: choice.preview
       }
     }
     Picker {
@@ -933,7 +964,7 @@ Panel {
               spacing: 6
               Text { text: "Look"; color: root.brandColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
               Text { text: "& Feel"; color: root.accentColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
-              Caption { text: "v0.1.0"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
+              Caption { text: "v0.2.0"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
             }
             Caption { text: "Your desktop, in one place"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
           }
@@ -962,7 +993,7 @@ Panel {
             ColumnLayout {
               objectName: "appearancePage"
               width: parent.width; visible: root.activeTab === 0
-              enabled: !root.busy; spacing: 16
+              enabled: root.inventoryLoaded && !root.busy; spacing: 16
               RowLayout {
                 Layout.fillWidth: true; spacing: 6
                 FieldLabel { text: "Mode"; Layout.fillWidth: true }
@@ -1030,29 +1061,53 @@ Panel {
               Divider {}
               RowLayout {
                 Layout.fillWidth: true
-                ActionButton { objectName: "unlockPreviewToggle"; quiet: true; text: (root.unlockExpanded ? "▾ " : "▸ ") + "Boot unlock designs"; onClicked: root.unlockExpanded = !root.unlockExpanded }
-                Item { Layout.fillWidth: true }
-                Caption { text: "Preview only"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
+                FieldLabel { text: "Boot unlock artwork"; Layout.fillWidth: true }
+                Caption { text: "Administrator approval"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
               }
               ColumnLayout {
-                visible: root.unlockExpanded; Layout.fillWidth: true; spacing: 8
-                Caption { Layout.fillWidth: true; text: "Preview artwork here. Boot unlock changes are unavailable and are not included in Apply."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+                objectName: "unlockExamples"
+                Layout.fillWidth: true; spacing: 8
+                Rectangle {
+                  objectName: "unlockPreviewCard"
+                  Layout.fillWidth: true; implicitHeight: Math.max(140, Math.min(220, width * 9 / 16))
+                  color: root.entryFor(root.unlockDesigns, root.selectedUnlockId).backgroundColor || root.surfaceColor; border.color: root.lineColor; radius: 3; clip: true
+                  Image {
+                    id: unlockImage
+                    objectName: "unlockDesignPreview"
+                    anchors.centerIn: parent; width: parent.width * 0.72; height: parent.height * 0.65
+                    source: root.fileUrl(root.selectedUnlockPreview)
+                    sourceSize.width: 960; sourceSize.height: 540
+                    fillMode: Image.PreserveAspectFit; asynchronous: true; cache: true
+                    Accessible.role: Accessible.Graphic
+                    Accessible.name: "Boot unlock artwork example"
+                  }
+                  Caption {
+                    anchors.centerIn: parent; width: parent.width - 24
+                    horizontalAlignment: Text.AlignHCenter; color: root.mutedColor
+                    visible: unlockImage.status !== Image.Ready
+                    text: !root.unlockDesigns.length ? "No unlock artwork available" : unlockImage.status === Image.Loading ? "Loading artwork…" : "Preview unavailable"
+                  }
+                }
+                Picker {
+                  objectName: "unlockDesignPicker"
+                  accessibleLabel: "Boot unlock artwork"; model: root.unlockDesigns; textRole: "displayName"
+                  currentIndex: root.unlockDesigns.findIndex(function(entry) { return entry.id === root.selectedUnlockId })
+                  displayText: currentIndex >= 0 ? currentText : "No design selected"
+                  enabled: root.unlockDesigns.length > 0
+                  onActivated: function(index) { root.selectedUnlockId = root.unlockDesigns[index].id; root.selectedUnlockPreview = root.unlockDesigns[index].preview || ""; root.unlockSelectionChanged = true }
+                }
                 RowLayout {
                   Layout.fillWidth: true
-                  Picker {
-                    objectName: "unlockDesignPicker"
-                    accessibleLabel: "Boot unlock preview"; model: root.unlockDesigns; textRole: "displayName"
-                    currentIndex: root.unlockDesigns.findIndex(function(entry) { return entry.id === root.selectedUnlockId })
-                    displayText: currentIndex >= 0 ? currentText : "Select a design to preview"
-                    onActivated: function(index) { root.selectedUnlockId = root.unlockDesigns[index].id; root.selectedUnlockPreview = root.unlockDesigns[index].preview || ""; root.unlockSelectionChanged = true }
-                  }
-                  ActionButton { objectName: "openUnlockPreviewButton"; text: "Preview"; enabled: !!root.selectedUnlockPreview; onClicked: unlockPreviewDialog.open() }
+                  ActionButton { text: "Undo boot artwork"; quiet: true; visible: !!(root.appearanceActionStatuses.unlock || {}).undoAvailable; onClicked: root.undoAppearanceAction("unlock") }
+                  ActionButton { text: "Recover boot artwork"; quiet: true; visible: !!(root.appearanceActionStatuses.unlock || {}).recoveryAvailable; onClicked: root.runAppearanceAction("unlock", ["recover-unlock"]) }
                 }
+                ResultNotice { Layout.fillWidth: true; kind: "unlock" }
+                Caption { Layout.fillWidth: true; text: "Changes the boot logo. Existing boot colours stay in place. Administrator approval is requested only when you apply a new selection."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               }
             }
             ColumnLayout {
               objectName: "fontsPage"
-              width: parent.width; visible: root.activeTab === 1; enabled: !root.busy; spacing: 18
+              width: parent.width; visible: root.activeTab === 1; enabled: root.inventoryLoaded && !root.busy; spacing: 18
               Caption { Layout.fillWidth: true; text: "Two fonts. One consistent desktop."; color: root.mutedColor }
               GridLayout { Layout.fillWidth: true; columns: width < 620 ? 1 : 2; uniformCellWidths: true; columnSpacing: 24; rowSpacing: 24; FontChoice { terminal: false } FontChoice { terminal: true } }
               Divider {}
@@ -1120,7 +1175,7 @@ Panel {
             Layout.fillWidth: true; spacing: 4
             Caption {
               Layout.fillWidth: true
-              text: root.globalApplyRunning ? root.globalApplyStatus : root.applyFailed ? (root.globalApplyCurrentStep ? "Apply stopped at " + root.globalApplyStepName(root.globalApplyCurrentStep) : "Choose the missing settings") : root.attentionItems.length ? root.attentionItems.length + " action" + (root.attentionItems.length === 1 ? " needs" : "s need") + " attention" : root.globalApplyStatus ? "Last Apply: settings saved" : "Ready when you are"
+              text: !root.inventoryLoaded && !root.inventoryError ? "Loading settings…" : root.globalApplyRunning ? root.globalApplyStatus : root.applyFailed ? (root.globalApplyCurrentStep ? "Apply stopped at " + root.globalApplyStepName(root.globalApplyCurrentStep) : "Choose the missing settings") : root.attentionItems.length ? root.attentionItems.length + " action" + (root.attentionItems.length === 1 ? " needs" : "s need") + " attention" : root.globalApplyStatus ? "Last Apply: settings saved" : "Ready when you are"
               color: root.applyFailed || root.attentionItems.length ? root.warningColor : root.popupForeground
               font.pixelSize: root.controlFontPixelSize - 1
             }
@@ -1128,43 +1183,6 @@ Panel {
           }
           ActionButton { text: "Review"; quiet: true; visible: root.attentionItems.length > 0 || root.applyFailed; onClicked: root.selectTab(2) }
           ActionButton { objectName: "applyChangesButton"; text: root.globalApplyRunning ? "Applying…" : "Apply changes"; primary: true; enabled: !root.busy && root.inventoryLoaded; onClicked: root.applyAllSelectedSettings() }
-        }
-      }
-
-      Controls.Dialog {
-        palette.window: root.popupBackground
-        palette.base: root.popupBackground
-        palette.alternateBase: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.06))
-        palette.button: root.popupBackground
-        palette.windowText: root.popupForeground
-        palette.text: root.popupForeground
-        palette.buttonText: root.popupForeground
-        palette.placeholderText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.75))
-        palette.brightText: root.popupBackground
-        palette.highlight: root.popupForeground
-        palette.highlightedText: root.popupBackground
-        palette.light: Qt.lighter(root.popupBackground, 1.1)
-        palette.midlight: Qt.lighter(root.popupBackground, 1.05)
-        palette.mid: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.3))
-        palette.dark: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.5))
-        palette.shadow: root.popupForeground
-        palette.disabled.windowText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
-        palette.disabled.text: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
-        palette.disabled.buttonText: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.65))
-
-        id: unlockPreviewDialog
-        title: "Boot unlock preview"
-        modal: true
-        anchors.centerIn: parent
-        width: Math.min(640, panel.availableCardWidth - 40)
-        height: Math.min(440, panel.availableCardHeight - 40)
-        standardButtons: Controls.Dialog.Close
-        contentItem: Image {
-          objectName: "unlockDesignPreview"
-          source: root.fileUrl(root.selectedUnlockPreview)
-          fillMode: Image.PreserveAspectFit
-          asynchronous: true
-          cache: false
         }
       }
 
@@ -1211,7 +1229,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, fonts, background, then optional icons. Boot unlock is currently preview-only and is not applied. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
+              text: "Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1259,7 +1277,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Expand Boot unlock designs on the Appearance tab to preview installed artwork. Boot unlock changes are unavailable and are never included in Apply changes. Previous unlock journals are preserved."
+              text: "Boot unlock artwork is shown directly on the Appearance tab. Select a design to update the example. Changing the boot artwork requires administrator approval. Each current boot image is built and inspected before publication. Undo restores the saved boot files; it refuses if a system update or other change has replaced them. Boot colours are preserved. Signed/Secure Boot and custom boot layouts are currently unsupported."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1318,6 +1336,15 @@ Panel {
       }
       }
     }
+  }
+
+  Component.onCompleted: root.refreshInventory()
+
+  FileView {
+    id: cachedPreviews
+    path: root.previewCachePath
+    printErrors: false
+    onLoaded: root.adoptPreviewCache(text())
   }
 
   // The current theme can change through Automatic mode or outside this panel.
@@ -1382,7 +1409,7 @@ Panel {
             root.selectedIconId = restoredIcon ? restoredIcon.id : ""
           } else {
             var restoredUnlock = root.unlockDesigns.find(function(entry) { return String(entry.name).toLowerCase().replace(/_/g, "-") === String(result.restored || "").toLowerCase().replace(/_/g, "-") })
-            if (restoredUnlock) root.selectedUnlockId = restoredUnlock.id
+            if (restoredUnlock) { root.selectedUnlockId = restoredUnlock.id; root.selectedUnlockPreview = restoredUnlock.preview || "" }
           }
         } else if (result.state === "already-current") {
           if (kind === "theme") {
@@ -1420,6 +1447,7 @@ Panel {
         root.appearanceActionMessages = messages
         if (kind === "theme") root.updatePending("theme", result)
         root.setSectionResult(kind, kind === "theme" && root.themeActionNeedsAttention ? "pending" : "saved", message)
+        if (kind === "unlock") root.unlockSelectionChanged = false
         root.appearanceAuditStatus = ""
         root.refreshInventory()
         Qt.callLater(root.runAppearanceAudit)
@@ -1438,6 +1466,7 @@ Panel {
     }
     if (code !== 0 || !root.globalApplyStepSucceeded)
       root.setSectionResult(root.appearanceActionKind, "error", root.appearanceActionMessages[root.appearanceActionKind])
+    if (!root.globalApplyStepSucceeded && root.appearanceActionKind === "unlock") root.refreshInventory()
     root.appearanceActionRunning = false
     if (root.globalApplyRunning && root.globalApplyCurrentStep === root.appearanceActionKind) {
       var succeeded = code === 0 && root.globalApplyStepSucceeded
@@ -1478,61 +1507,6 @@ Panel {
       appearanceActionProcess.resultExitCode = code
       appearanceActionProcess.exitSeen = true
       root.finishAppearanceAction()
-    }
-  }
-
-  Process {
-    id: unlockApplyProcess
-    onExited: function(code) {
-      if (code !== 0) {
-        root.appearanceActionRunning = false
-        var errors = Object.assign({}, root.appearanceActionMessages)
-        errors.unlock = "Could not start the boot unlock action."
-        root.appearanceActionMessages = errors
-        if (root.globalApplyRunning && root.globalApplyCurrentStep === "unlock")
-          Qt.callLater(function() { root.finishGlobalApplyStep(false, errors.unlock) })
-      } else {
-        unlockStatusPoll.start()
-      }
-    }
-  }
-
-  Process {
-    id: unlockStatusProcess
-    property var parsedStatus: null
-    property bool statusRead: false
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
-      try {
-        unlockStatusProcess.parsedStatus = JSON.parse(String(text || "{}"))
-        unlockStatusProcess.statusRead = true
-      } catch (e) {
-        unlockStatusProcess.parsedStatus = null
-        unlockStatusProcess.statusRead = false
-      }
-      root.handleUnlockStatusPoll()
-    } }
-    onExited: function(code) {
-      root.unlockStatusExitCode = code
-      root.unlockStatusProcessExited = true
-      root.handleUnlockStatusPoll()
-    }
-  }
-
-  Timer {
-    id: unlockStatusPoll
-    interval: 1500
-    repeat: true
-    onTriggered: {
-      if (unlockStatusProcess.running) return
-      root.unlockStatusPollCount += 1
-      unlockStatusProcess.parsedStatus = null
-      unlockStatusProcess.statusRead = false
-      root.unlockStatusExitCode = 0
-      root.unlockStatusPollHandled = false
-      root.unlockStatusProcessExited = false
-      unlockStatusProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")),
-        "appearance-action-status", "unlock"]
-      unlockStatusProcess.running = true
     }
   }
 

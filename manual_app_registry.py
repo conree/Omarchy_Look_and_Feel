@@ -74,7 +74,7 @@ def _read() -> dict[str, Any]:
         or not isinstance(item.get("key"), str)
         or len(str(item.get("key", ""))) > 80
         or item.get("state") not in {"registered", "unsupported"}
-        or item.get("fontSurface") not in {"gtk3", "gtk4", "terminal-inherited", "terminal-emulator", "unsupported"}
+        or item.get("fontSurface") not in {"gtk3", "gtk4", "qt5", "qt6", "terminal-inherited", "terminal-emulator", "unsupported"}
         or ("appId" in item and (
             not isinstance(item.get("appId"), str) or not item["appId"] or len(item["appId"]) > 512
             or "/" in item["appId"] or "\\" in item["appId"]
@@ -158,6 +158,10 @@ def _classify(record: dict[str, Any]) -> str:
         ".config/gtk-4.0/settings.ini" in value and "gtk-font-name" in value for value in control_points
     ):
         return "gtk4"
+    for version in (5, 6):
+        if (framework == f"Qt {version} application" and roles == ["system-ui"]
+                and any(f"qt{version}ct/qt{version}ct.conf" in value for value in control_points)):
+            return f"qt{version}"
     app_id = str(record.get("id", ""))
     if (
         framework == "terminal-emulator" and app_id in TERMINALS and app_id in TERMINAL_COMMANDS
@@ -284,6 +288,8 @@ def validated_apply_status(target_ids: set[str] | None = None) -> dict[str, int]
                 included = "gtk3-settings" in target_ids
             elif surface == "gtk4":
                 included = "gtk4-settings" in target_ids
+            elif surface in {"qt5", "qt6"}:
+                included = surface + "ct-settings" in target_ids
             elif surface == "terminal-inherited":
                 included = any(adapter[1] in target_ids for adapter in TERMINAL_COMMANDS.values())
             elif surface == "terminal-emulator":

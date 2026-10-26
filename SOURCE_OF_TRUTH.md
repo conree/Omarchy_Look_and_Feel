@@ -13,12 +13,25 @@ and supported behavior; [PROJECT_STATUS.md](PROJECT_STATUS.md) records acceptanc
 The design brief contains owner requirements and explicitly dated history.
 Handoffs record operational continuity and are not design authority.
 
-The current EE Calc-inspired panel runtime/test archive contains 61 files:
+The October 26 source adds separate application/terminal theme examples and
+always-visible inline boot artwork to `Panel.qml`, removing preview buttons.
+It also preloads examples and caches presentation data in `panel_preview_cache.py`,
+with live readiness gates and bounded icon-lookup optimizations. These changes
+are included in the current archive below; their validation is recorded in
+`RELEASE_VALIDATION.md`. Version 0.2.0 also adds `boot_unlock.py` and the self-contained authenticated
+`boot_unlock_helper.py`; desktop-setting writers retain their existing transactions.
+The final runtime/test archive is
+`dca82bb5c9dc6e4d63882c7967ae130c15a9d042327069179bd1ba80723c365e`
+(61 files), with hashes in `Testing/Boot_VM_Lab/tools/finish-runtime-files.json`.
+Boot acceptance is in `Testing/Boot_VM_Lab/results/finish-boot-acceptance.json`.
+Application discovery and Qt manual-registration changes are included in that archive.
+
+The October 25 EE Calc-inspired panel runtime/test archive contains 61 files:
 `ea7774d1c2d4e853b90545b6a8cc9b17dd767d3d9207c9ba3763ef0fa9006ec3`.
 Manifest: `Testing/Boot_VM_Lab/tools/design-release-runtime-files.json`.
 It adds tabbed controls, previews, truthful current-theme and result state,
 keyboard navigation, draft-preservation fixes and regressions. Backend appearance
-writers remain unchanged. Final light/dark GUI evidence uses this archive;
+writers remain unchanged. Earlier October 25 light/dark GUI evidence uses this archive;
 earlier backend/sizing evidence is distinguished below and in the validation report.
 
 The earlier October 25 Qt-safe runtime/test archive contains 57 files and has SHA-256

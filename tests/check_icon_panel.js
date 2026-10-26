@@ -10,7 +10,7 @@ function production(name) {
 function fixture(failedStep) {
   const calls = [];
   const root = {icons: [{id: 'icon:installed', name: 'Installed'}], selectedIconId: '',
-    appearanceActionMessages: {theme: 'Keep theme result'}, sectionResults: {}, inventoryLoaded: false,
+    appearanceActionMessages: {theme: 'Keep theme result'}, sectionResults: {}, inventoryLoaded: true,
     selectedSystemFontId: 'font:system', selectedTerminalFontId: 'font:terminal',
     selectedLightThemeId: 'theme:light', selectedDarkThemeId: 'theme:dark', selectedBackgroundId: 'background:test',
     unlockApplyAvailable: false, unlockSelectionChanged: true, selectedUnlockId: 'unlock:test'};

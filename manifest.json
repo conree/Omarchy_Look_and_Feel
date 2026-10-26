@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "si.omarchy-look-and-feel",
   "name": "Omarchy Look & Feel",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "author": "si",
   "license": "MIT",
-  "description": "One Omarchy control page for system and terminal fonts, themes, backgrounds, and icons.",
+  "description": "One Omarchy panel for fonts, themes, backgrounds, icons and verified boot artwork.",
   "kinds": [
     "bar-widget"
   ],

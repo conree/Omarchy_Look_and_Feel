@@ -1,19 +1,52 @@
 # Project status
 
-Updated 2026-10-25. The plugin is a tested development candidate for Omarchy
-4.0.6 / Hyprland 0.56.2. This is not an unrestricted release-readiness claim.
-The owner's reopened application appearance after a fresh login remains an
-acceptance check. Boot unlock is preview-only and cannot be applied or undone.
+Updated 2026-10-26. Version 0.2.0 implements the documented Omarchy appearance
+interfaces. Host acceptance after a fresh login remains the owner's final step:
+the current session still uses `gtk3`, while the saved Qt selector is `qt6ct`.
+No logout or application restart has been forced. VM boot checks verify embedded
+artwork and encrypted bootability; graphical Plymouth rendering remains unverified. Application detection does
+not imply control of every custom application's fonts or content.
 
 ## Completed
 
+- The final 0.2.0 archive passed real light/dark panel Apply and Undo with 28
+  captures, all 27 isolated programs in their required environment, and independent
+  source/recovery review. All 61 runtime/test files match that archive.
+
+- Boot artwork now has authenticated Apply, exact-file Undo and explicit recovery.
+  Each current boot image is staged, checked for the selected artwork and complete
+  Plymouth assets, and checked against its bootloader checksum. A shared boot lock
+  survives helper death. Failed builds restore the saved state without rebuilding.
+  The final helper passed stock one-kernel and hardened two-kernel VM Apply/Undo,
+  four encrypted cold boots and injected build failure. Boot colours are preserved;
+  signed/Secure Boot and custom boot layouts are outside this implementation.
+- Background checks quietly defer when another monitor or Apply owns the lock;
+  ordinary contention no longer produces a false action requiring attention.
+- Application detection now handles Python Qt launchers and Qt Quick binaries,
+  and distinguishes Electron/Flutter content from GTK shell libraries. Manual
+  audits can register Qt 5/6 system-font surfaces while excluding editor-specific
+  controls. This expands identification and shared controls, not arbitrary app CSS.
+
+- Examples now preload with the plugin and reuse a disposable display cache while
+  live inventory refreshes. Cache data cannot enable Apply/Undo or override fresh
+  defaults; later refreshes preserve drafts. An isolated native Qt test measured
+  43 ms to the first displayed frame after preloading, and 4 ms on reopening.
+  Actual host click latency was not measured. See RELEASE_VALIDATION.md.
+- Each Light/Dark theme preview now contains separate application and terminal
+  examples. Native offscreen Qt rendering covers wide/narrow layouts and missing
+  preview data; existing panel interaction and keyboard checks pass. This local
+  UI change follows the October 25 VM-tested archive; see RELEASE_VALIDATION.md.
+- All examples are displayed inline. Boot artwork is always visible on Appearance,
+  with an initial installed example, immediate selection updates and an unavailable
+  state when no artwork exists. Its former button, dialog and collapsed section
+  are removed; boot Apply and Undo use the verified transaction described above.
 - The EE Calc-inspired panel now separates Appearance, Fonts and Applications
   into persistent tabs with a fixed Apply footer. It includes installed-palette,
   wallpaper, icon and font previews, concise results with expandable details,
   per-section Undo, application search and explicit pending actions. Theme accents
   remain readable in light and dark modes. Native keyboard navigation reveals
   offscreen controls. Drafts survive tab changes, reopening and failed refreshes;
-  Font Undo preserves unrelated drafts. Boot artwork remains preview-only.
+  Font Undo preserves unrelated drafts. Boot artwork is always visible.
 - The restart-related invisible bar was repaired without changing layout. The
   plugin now validates native Qt font fields, repairs malformed input, refuses
   unsafe historical Undo/recovery, and gates new Qt integration activation until
@@ -62,6 +95,5 @@ The measured size result covers JetBrainsMono Nerd Font at 12/14 pt and scales
 1/1.5 in VMs. It does not cover every font, GPU or custom scaling environment.
 Generic Fontconfig aliases already replaced by distribution rules, custom
 application schemas/launch overrides, and sandbox-specific profiles remain
-outside automatic coverage. No privileged boot action or browser-policy rewrite
-is introduced. Four unused owner-theme image copies were removed from the
+outside automatic coverage. Boot changes require explicit authentication; browser security policy is preserved. Four unused owner-theme image copies were removed from the
 current tree; older Git history retains them.
