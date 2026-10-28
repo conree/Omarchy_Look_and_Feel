@@ -1,6 +1,6 @@
 # Project status
 
-Updated 2026-10-26. Version 0.2.0 implements the documented Omarchy appearance
+Updated 2026-10-28. Version 0.2.0 implements the documented Omarchy appearance
 interfaces. Host acceptance after a fresh login remains the owner's final step:
 the current session still uses `gtk3`, while the saved Qt selector is `qt6ct`.
 No logout or application restart has been forced. VM boot checks verify embedded
@@ -8,6 +8,13 @@ artwork and encrypted bootability; graphical Plymouth rendering remains unverifi
 not imply control of every custom application's fonts or content.
 
 ## Completed
+
+- An always-visible reminder asks users to save work in every open application
+  before Apply. PCManFM now has a separate live restart notice when GTK appearance
+  changes after its process was first observed. Process identity checks clear the
+  notice after exit/restart, and unchanged Apply does not create one. Isolated
+  lifecycle, controller, UI and native layout checks pass; actual PCManFM rendering
+  and changes predating observation are outside this check.
 
 - Public README now leads with installation, first use, section Undo and disabling
   repair, plus native panel captures and a GTK 3 palette comparison. The repair

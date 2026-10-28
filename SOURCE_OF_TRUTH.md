@@ -13,6 +13,12 @@ and supported behavior; [PROJECT_STATUS.md](PROJECT_STATUS.md) records acceptanc
 The design brief contains owner requirements and explicitly dated history.
 Handoffs record operational continuity and are not design authority.
 
+The October 28 source adds a save-work reminder and PCManFM restart observations
+in `application_restarts.py`, delivered through controller results and periodic
+reconciliation. This revision follows the VM archive below. Its isolated tests
+and rendered panel scope are recorded in `RELEASE_VALIDATION.md`; it does not
+claim live PCManFM visual verification.
+
 The later October 26 public-documentation revision adds reproducible captures in
 `docs/`, updates the README and panel Help repair notice, removes the personal
 background-library search from `controller.py`, and replaces the local Office

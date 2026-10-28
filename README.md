@@ -49,6 +49,9 @@ or custom Omarchy builds may lack required theme-generation capabilities.
 
 ## First use
 
+Save your work in all open applications before applying changes. Some
+applications may need to be closed or restarted.
+
 1. Open **Look & Feel** from its bar button.
 2. Choose your mode, Light and Dark themes, and background in **Appearance**.
    Icons are optional. Put extra wallpaper images in `~/.config/omarchy/backgrounds/`.
@@ -145,6 +148,12 @@ with its example underneath. The Mode label sits beside the three mode buttons:
 - **Applications:** review outstanding actions, search detected applications,
   and audit a missing application. A detected application is not automatically
   a supported or visually verified application.
+
+PCManFM is listed for reopening when its GTK appearance settings change while
+its process is being monitored. Fully quit and reopen it to clear that notice;
+closing a window can leave it running. The notice checks process lifetime and
+settings changes, not rendered appearance, and cannot detect changes made before
+the process was first observed.
 
 Switching tabs, reopening the panel and refreshing the catalog preserve drafts
 while the plugin instance remains loaded. Drafts are not saved across a shell

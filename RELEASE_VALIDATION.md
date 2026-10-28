@@ -1,10 +1,33 @@
-# Release validation — updated 2026-10-26
+# Release validation — updated 2026-10-28
 
 This is a tested development candidate for the documented Omarchy baseline,
 not a claim that every Linux application or hardware configuration is supported.
 Version 0.2.0 adds verified boot-artwork Apply/Undo for the supported layout.
 Host application appearance after a fresh login still needs owner acceptance;
 no host logout or application restart was forced.
+
+## PCManFM restart notices and save-work reminder — October 28
+
+`application_restarts.py` observes exact same-user PCManFM process identities
+(boot ID, PID and start time), relevant GTK 3 settings/CSS and desktop font,
+scaling and icon settings. Before/after controller observations and periodic
+reconciliation maintain a separate current restart list; old section results
+cannot retain a resolved notice. Failed observations preserve existing notices
+without changing Apply success. The tracker never signals or restarts an app.
+
+The isolated restart suite covers real keyfile GSettings, theme/font/icon changes,
+unchanged and unrelated writes, repeated checks, multiple processes, PID reuse,
+exit/reboot, restoration to the baseline, read failures, unsafe configuration
+paths, controller delivery and reconciliation clearing. The 21 panel interaction
+cases, font pending, icon panel, application font, portable appearance and native
+keyboard/focus checks pass. Production panel captures with sample data in an
+offscreen Qt window show the reminder above Apply on every tab without QML
+warnings. Captures for this revision are temporary review artifacts; the checked-in
+README screenshots and their provenance still describe the October 26 source.
+
+This is a settings/process-lifetime check, not a rendered-PCManFM test. It cannot
+infer changes made before the process's first observation. No live host Apply,
+forced application restart or repeat of the VM/boot matrix was performed.
 
 ## Public documentation and portability revision
 

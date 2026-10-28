@@ -273,6 +273,8 @@ def reconcile():
             pending.append({'app': section, 'action': 'retry', 'reason': str(exc)})
     status = {'schemaVersion': 1, 'pendingApplications': pending, 'results': results,
               'renderedAppearanceVerified': False}
+    from application_restarts import add_to_result
+    add_to_result(status)
     path = tx.transactions_path().parent / 'reconcile-status.json'
     payload = (json.dumps(status, ensure_ascii=False, sort_keys=True) + '\n').encode()
     if not path.exists() or path.read_bytes() != payload:

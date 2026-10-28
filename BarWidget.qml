@@ -13,6 +13,7 @@ BarWidget {
   property bool openRequested: false
   property string reconciliationMessage: ""
   property var reconciliationPending: []
+  property var restartApplications: []
   property bool reconciliationFailed: false
   readonly property string appearanceConfigDir: {
     var configured = Quickshell.env("XDG_CONFIG_HOME")
@@ -84,6 +85,7 @@ BarWidget {
       if (result.schemaVersion !== 1 || !Array.isArray(result.pendingApplications)) throw new Error("Invalid reconciliation result")
       root.reconciliationFailed = false
       root.reconciliationPending = result.pendingApplications
+      if (Array.isArray(result.restartApplications)) root.restartApplications = result.restartApplications
       root.reconciliationMessage = result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join("\n")
     } catch (e) { root.reconciliationFailed = true; root.reconciliationMessage = "The appearance check returned an unreadable result." }
   }

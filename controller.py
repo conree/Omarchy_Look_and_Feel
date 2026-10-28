@@ -747,6 +747,12 @@ def audit_manual_app(query: str) -> dict[str, object]:
     return register_audit_result(query, result)
 
 
+def write_action_result(result):
+    from application_restarts import add_to_result
+    json.dump(add_to_result(result), sys.stdout, ensure_ascii=False, sort_keys=True)
+    sys.stdout.write("\n")
+
+
 def main(argv: list[str]) -> int:
     mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile"}
     if not mutation:
@@ -780,6 +786,8 @@ def main(argv: list[str]) -> int:
                     for area in ('theme', 'fonts', 'icons'):
                         if saved.get(area):
                             requirements.require(area)
+                import application_restarts
+                application_restarts.observe()
                 recover_pending()
                 appearance_policy.recover_theme_undos()
                 return _main(argv)
@@ -822,8 +830,7 @@ def _main(argv: list[str]) -> int:
         except (TransactionError, ValueError, OSError, RuntimeError) as exc:
             print(f"Global font Apply failed: {exc}", file=sys.stderr)
             return 1
-        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
-        sys.stdout.write("\n")
+        write_action_result(result)
         return 0
     if argv == ["rollback-global-fonts"]:
         try:
@@ -832,8 +839,7 @@ def _main(argv: list[str]) -> int:
         except (TransactionError, RuntimeError, OSError) as exc:
             print(f"Global font Undo failed: {exc}", file=sys.stderr)
             return 1
-        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
-        sys.stdout.write("\n")
+        write_action_result(result)
         return 0
     if len(argv) == 2 and argv[0] == "appearance-action-status" and argv[1] in {"theme", "background", "unlock"}:
         status = action_status()[argv[1]]
@@ -849,8 +855,7 @@ def _main(argv: list[str]) -> int:
         except (TransactionError, OSError, ValueError) as exc:
             print(f"Theme Apply failed: {exc}", file=sys.stderr)
             return 1
-        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
-        sys.stdout.write("\n")
+        write_action_result(result)
         return 0
     if len(argv) == 3 and argv[0] == "apply-catalog-action":
         try:
@@ -858,8 +863,7 @@ def _main(argv: list[str]) -> int:
         except (TransactionError, OSError, ValueError) as exc:
             print(f"Appearance Apply failed: {exc}", file=sys.stderr)
             return 1
-        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
-        sys.stdout.write("\n")
+        write_action_result(result)
         return 0
     if len(argv) == 2 and argv[0] == "rollback-appearance":
         try:
@@ -877,8 +881,7 @@ def _main(argv: list[str]) -> int:
         except (TransactionError, OSError, ValueError) as exc:
             print(f"Appearance Undo failed: {exc}", file=sys.stderr)
             return 1
-        json.dump(result, sys.stdout, ensure_ascii=False, sort_keys=True)
-        sys.stdout.write("\n")
+        write_action_result(result)
         return 0
     if len(argv) == 2 and argv[0] == "audit-appearance":
         try:

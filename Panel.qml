@@ -101,6 +101,7 @@ Panel {
   property bool applyFailed: false
   property var sectionResults: ({})
   property var pendingBySection: ({ fonts: [], theme: [] })
+  property var restartApplications: []
   property var applicationRecords: []
   property string applicationSearch: ""
   readonly property bool busy: globalApplyRunning || appearanceActionRunning || fontActionRunning || manualAppActionRunning || manualAuditClearRunning
@@ -178,6 +179,7 @@ Panel {
   }
 
   function updatePending(kind, data) {
+    root.updateRestartApplications(data)
     var pending = (data.pendingApplications || []).slice()
     var reload = data.terminalReload || ((data.runtimeRefresh || {}).terminalReload) || ({})
     ;(reload.failed || []).forEach(function(app) { pending.push({ app: app, action: "reload", reason: "Settings saved. Reopen the application to see the changes." }) })
@@ -186,10 +188,17 @@ Panel {
     root.pendingBySection = groups
   }
 
+  function updateRestartApplications(data) {
+    if (!Array.isArray(data.restartApplications)) return
+    root.restartApplications = data.restartApplications
+    if (root.hostWidget) root.hostWidget.restartApplications = data.restartApplications
+  }
+
   function collectAttention() {
     var items = [], seen = ({})
     var pending = (root.pendingBySection.fonts || []).concat(root.pendingBySection.theme || [])
     if (root.hostWidget) pending = pending.concat(root.hostWidget.reconciliationPending || [])
+    pending = pending.concat((root.hostWidget ? root.hostWidget.restartApplications : root.restartApplications) || [])
     pending.forEach(function(item) {
       var key = item.app + ":" + item.action + ":" + item.reason
       if (!seen[key]) { seen[key] = true; items.push(item) }
@@ -1167,6 +1176,12 @@ Panel {
           }
         }
         Divider {}
+        Caption {
+          Layout.fillWidth: true
+          text: "Save your work in all open applications before applying changes. Some applications may need to be closed or restarted."
+          color: root.mutedColor
+          font.pixelSize: root.controlFontPixelSize - 2
+        }
         RowLayout {
           id: footer
           objectName: "panelFooter"
@@ -1229,7 +1244,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
+              text: "Save your work in all open applications before applying changes. Some applications may need to be closed or restarted. Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1445,6 +1460,7 @@ Panel {
         var messages = Object.assign({}, root.appearanceActionMessages)
         messages[kind] = message
         root.appearanceActionMessages = messages
+        root.updateRestartApplications(result)
         if (kind === "theme") root.updatePending("theme", result)
         root.setSectionResult(kind, kind === "theme" && root.themeActionNeedsAttention ? "pending" : "saved", message)
         if (kind === "unlock") root.unlockSelectionChanged = false

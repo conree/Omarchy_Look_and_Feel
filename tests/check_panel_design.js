@@ -343,6 +343,22 @@ test('application search filters actual inventory records without changing font 
   assert.deepStrictEqual(draft(f.root), before);
 });
 
+test('PCManFM restart notices follow current observation without stale section entries', () => {
+  const f = fixture();
+  const notice = {app: 'PCManFM', action: 'reopen', reason: 'Fully quit and reopen PCManFM.'};
+  f.root.hostWidget = {reconciliationPending: [], restartApplications: []};
+  f.root.updatePending('fonts', {pendingApplications: [], restartApplications: [notice]});
+  assert.equal(f.root.collectAttention().filter(item => item.app === 'PCManFM').length, 1);
+  assert.equal(f.root.pendingBySection.fonts.length, 0);
+  f.root.updateRestartApplications({}); // A failed observation preserves the notice.
+  assert.equal(f.root.collectAttention().filter(item => item.app === 'PCManFM').length, 1);
+  f.root.hostWidget.restartApplications = []; // Successful reconciliation after exit.
+  assert.equal(f.root.collectAttention().filter(item => item.app === 'PCManFM').length, 0);
+  f.root.hostWidget = null;
+  f.root.updateRestartApplications({restartApplications: []});
+  assert.equal(f.root.collectAttention().length, 0);
+});
+
 test('preview file URLs escape path data and contrast helper preserves readable text', () => {
   const f = fixture(); assert.equal(f.root.fileUrl(''), '');
   assert.equal(f.root.fileUrl('/fixture/a #1%/猫.png'), 'file:///fixture/a%20%231%25/%E7%8C%AB.png');
