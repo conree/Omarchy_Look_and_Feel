@@ -17,7 +17,12 @@ The October 28 source adds a save-work reminder and PCManFM restart observations
 in `application_restarts.py`, delivered through controller results and periodic
 reconciliation. This revision follows the VM archive below. Its isolated tests
 and rendered panel scope are recorded in `RELEASE_VALIDATION.md`; it does not
-claim live PCManFM visual verification.
+claim physical-host PCManFM visual verification. The later October 28 release
+sweep also adds Brave font-alias explanations and test-fixture corrections. Its
+current runtime/test archive is
+`a4e1c070ebb2970c12aa54ef5c03cc31bf64902517ade5d17908a810261cb6cd`.
+RELEASE_VALIDATION.md records real VM PCManFM rendering, graphical authentication
+and encrypted boot acceptance, plus the remaining physical-host limits.
 
 The later October 26 public-documentation revision adds reproducible captures in
 `docs/`, updates the README and panel Help repair notice, removes the personal

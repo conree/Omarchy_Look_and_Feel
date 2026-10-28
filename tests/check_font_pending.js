@@ -8,3 +8,5 @@ assert(result.success && result.needsAction && result.message.includes('reloads 
 result=context.evaluate(JSON.stringify({rolledBack:'id',terminalReload:{requested:['ghostty'],failed:[]}}),'',0);
 assert(result.success && result.message.includes('Reload requested'));
 console.log('Pending-app and reload-failure messages preserve saved-vs-rendered distinction.');
+result=context.evaluate(JSON.stringify({transaction:'id',fontNotes:['Brave may display Custom for Test Sans Medium.']}),'',0);
+assert(result.success && !result.needsAction && result.message.includes('Custom for Test Sans Medium'));

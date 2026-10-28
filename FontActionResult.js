@@ -15,6 +15,10 @@ function evaluate(stdoutText, stderrText, exitCode) {
     return { success: false, message: "Font Apply stopped: " + Number(result.unsupportedManualCount || 0)
       + " manually audited control surface(s) lack a verified reversible adapter. Re-audit with a specific entry or clear the manual audit registry." }
   var pending = result.pendingApplications || []
+  var fontNotes = Array.isArray(result.fontNotes) ? result.fontNotes.filter(function(note) {
+    return typeof note === "string"
+  }) : []
+  var information = fontNotes.length ? " " + fontNotes.join(" ") : ""
   var reload = result.terminalReload || { requested: [], failed: [] }
   var reloadNote = (reload.requested || []).length
     ? " Reload requested for " + reload.requested.length + " running terminal type(s)." : ""
@@ -27,7 +31,7 @@ function evaluate(stdoutText, stderrText, exitCode) {
       needsAction: pending.length > 0 || (reload.failed || []).length > 0,
       message: "Font settings saved and checked in " + Number(result.targetCount || 0) + " configuration files"
         + (result.desktopFontsVerified ? " and the active desktop font settings." : ".")
-        + reloadNote + pendingNote + " Individual applications' rendered fonts are not automatically verified. Reopen applications that retain the previous font." }
+        + reloadNote + pendingNote + information + " Individual applications' rendered fonts are not automatically verified. Reopen applications that retain the previous font." }
   if (typeof result.rolledBack === "string" && result.rolledBack)
     return { success: true, undoAvailable: false, refreshInventory: true,
       needsAction: (reload.failed || []).length > 0,

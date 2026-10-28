@@ -3,10 +3,101 @@
 This is a tested development candidate for the documented Omarchy baseline,
 not a claim that every Linux application or hardware configuration is supported.
 Version 0.2.0 adds verified boot-artwork Apply/Undo for the supported layout.
-Host application appearance after a fresh login still needs owner acceptance;
-no host logout or application restart was forced.
+The owner accepted the physical-host reboot, unlock screen and visible application
+appearance on October 28. Detailed application and scaling coverage remains below.
 
-## PCManFM restart notices and save-work reminder — October 28
+## Marketplace preparation — October 28
+
+The submission candidate remains version 0.2.0. Its 63 runtime/test file hashes
+match the October 28 archive below, and all 28 recorded test results identify
+the current test files. The post-restart acceptance update changes documentation
+and private evidence. Root `preview.png` is an exact copy of the public
+`docs/screenshots/appearance.png` sample-data capture; its provenance and capture
+limits are described under Public documentation and portability revision.
+Private `Testing/` evidence and licensed local theme/font assets are excluded
+from publication. Marketplace review and approval are separate from these checks.
+
+## Physical-host restart acceptance — October 28
+
+After voluntarily restarting the physical machine, the owner reported: “The
+computer reboot worked perfectly, showing the correct unlock screen and showing
+the correctly themed applications.” The attached desktop screenshot shows Brave,
+PCManFM and a terminal using a dark appearance, with desktop bars visible on both
+displays. Separate visual inspection of that image corroborates the displayed
+application appearance. Host uptime also corroborates a recent boot.
+
+The screenshot, its SHA-256 and the owner's report are retained privately under
+`Testing/Release_2026-10-28/post-restart/`. Unlock-screen correctness is owner
+acceptance; the supplied image shows the unlocked desktop. Exact font faces and
+sizes, monitor scales, launcher Qt integration, KiCad, Typora, Betterbird and
+OnlyOffice still need detailed host checks. This reboot did not exercise a host
+boot-artwork Apply/Undo sequence. No further restart or configuration change was
+performed to record this acceptance.
+
+## Current-build release sweep — October 28
+
+The current runtime/test archive has SHA-256
+`a4e1c070ebb2970c12aa54ef5c03cc31bf64902517ade5d17908a810261cb6cd`.
+Its manifest is `Testing/Release_2026-10-28/runtime-files.json`; the parent Git
+commit is `b2d3698`. The archive includes the Brave explanatory-note change and
+the test-fixture corrections described below. Private raw results are under
+`Testing/Release_2026-10-28/` and `Testing/Boot_VM_Lab/results/`.
+
+All 28 test programs pass. Three failures in the first complete run were fixture
+problems: two JavaScript fixtures omitted the newly called restart helper, and
+the transaction fixture inherited the operator's active Qt selector. Those
+fixtures were corrected, with added notice-delivery assertions. The final full
+run passes all 27 sandbox-compatible programs; the unchanged native mail-lock
+test passed outside the sandbox. `checks-final.json` records current file hashes.
+
+The current build passed the real four-step desktop Apply in light and dark
+modes, 14 capture phases each, and exact Undo. Managed files, desktop settings,
+background content and prior journal hashes were restored. A single settings
+digest remains unchanged through tab/draft/preview interactions. Independent
+review checked all 28 screenshot hashes and representative wide/narrow layouts.
+
+The real plugin manager installed and enabled the build from a local Git mirror
+in a clean HOME with separate XDG directories and keyfile GSettings. Inventory,
+doctor, disable/re-enable and a fast-forward update to identical runtime bytes
+passed. This used the existing VM user, packages and compositor, rather than a
+new OS installation. Its original shell was restored afterward.
+
+Real VM PCManFM retained its old palette while running, produced the restart
+notice, adopted the changed palette after reopening, and cleared the panel
+count after reconciliation. The test restored managed files and desktop settings.
+
+Native Brave with disposable profiles reproduced Custom for Visby CF Medium.
+Its menu enumerates primary families and omits that secondary family name.
+DevTools platform-font measurements verify that inherited/default, serif and
+sans-serif samples use `VisbyCF-Medium`, while monospace uses
+`OfficeCodePro-Regular`. Explicitly selecting the parent Visby CF instead uses
+`VisbyCF-Regular`. The plugin preserves the variant and reports an informational
+note; it does not create an outstanding action. Mathematical fonts are outside
+the managed browser font fields. No owner browser profile was changed.
+
+The normal graphical pkexec path was exercised from the VM's desktop session:
+Cancel left all boot files unchanged, and Apply/Undo passed image verification
+and configuration/EFI/mount invariants. The initial SSH-launched attempt lacked
+a graphical session agent, so the final case launched through Hyprland.
+Two encrypted cold boots also passed. To exercise graphical Plymouth despite
+the lab's serial console, temporary Limine options requested graphics. The
+requested logo and graphical password field were captured and visually checked;
+unlock succeeded. The options were restored before exact artwork Undo. Boot
+assets were restored, excluding only the documented per-boot entropy seed, and
+the restored image passed another encrypted cold boot. The text-only OCR helper
+could not identify the graphical prompt, so its field was visually confirmed
+before the disposable VM passphrase was entered.
+
+Native host doctor checks pass outside the sandbox. The later owner-initiated
+physical reboot and visible application acceptance are recorded above; detailed
+host application/scaling checks and host boot-artwork Apply/Undo remain open.
+The full earlier two-VM failure/recovery matrix remains applicable to the
+unchanged boot helper; this sweep adds the graphical path rather than repeating
+every earlier injected-failure case. No owner appearance settings, boot files,
+login or existing owner application processes were changed by these release
+tests. Disposable native test processes did run on the host.
+
+## Initial PCManFM and save-work checks — October 28
 
 `application_restarts.py` observes exact same-user PCManFM process identities
 (boot ID, PID and start time), relevant GTK 3 settings/CSS and desktop font,
@@ -25,7 +116,7 @@ offscreen Qt window show the reminder above Apply on every tab without QML
 warnings. Captures for this revision are temporary review artifacts; the checked-in
 README screenshots and their provenance still describe the October 26 source.
 
-This is a settings/process-lifetime check, not a rendered-PCManFM test. It cannot
+These initial checks covered settings/process lifetime, not rendered PCManFM. They cannot
 infer changes made before the process's first observation. No live host Apply,
 forced application restart or repeat of the VM/boot matrix was performed.
 

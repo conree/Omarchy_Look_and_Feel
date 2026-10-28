@@ -116,6 +116,7 @@ rendering or an end-to-end desktop Apply. Reproduce them with
 [`docs/capture_screenshots.py`](docs/capture_screenshots.py) and
 [`docs/capture_gtk.py`](docs/capture_gtk.py). The helpers describe their requirements;
 they use temporary displays and do not apply settings to your desktop.
+Root `preview.png` copies the Appearance capture for the Marketplace listing.
 
 ## Technical details
 
@@ -154,6 +155,11 @@ its process is being monitored. Fully quit and reopen it to clear that notice;
 closing a window can leave it running. The notice checks process lifetime and
 settings changes, not rendered appearance, and cannot detect changes made before
 the process was first observed.
+
+Brave can display **Custom** for a selected font variant whose name is an alias,
+such as **Visby CF Medium**. Its font menu lists primary family names only. Look
+& Feel preserves the selected variant and explains this label in the font result.
+Choosing the parent **Visby CF** family instead can select its Regular face.
 
 Switching tabs, reopening the panel and refreshing the catalog preserve drafts
 while the plugin instance remains loaded. Drafts are not saved across a shell
@@ -287,6 +293,7 @@ The source of owner requirements is [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md).
 - `BarWidget.qml`: bar entry, popup lifecycle and guarded reconciliation timer.
 - `ShellFontBridge.qml`: one runtime font binding shared across monitors, released when the final widget leaves.
 - `appearance_policy.py`: desired state, serialized operations and grouped theme Undo.
+- `application_restarts.py`: process-lifetime observations for PCManFM restart notices.
 - `application_themes.py`: palette-driven toolkit and application adapters.
 - `managed_preferences.py`: per-field codecs and ownership-aware restoration.
 - `css_takeover.py`: syntax-aware CSS conflict repair preserving layout.
@@ -378,6 +385,12 @@ Downloads folder is needed. Review source and license separately before
 redistributing any fonts or artwork.
 
 ## Validation and remaining coverage
+
+The October 28 release sweep passes all 28 test programs, current-build VM
+light/dark Apply/Undo, clean-profile installation/update, PCManFM restart
+behavior, native Brave font rendering and graphical boot authentication/cold
+boots. See [the release report](RELEASE_VALIDATION.md) for exact scope and
+remaining physical-desktop acceptance.
 
 Run the scripts in `tests/` from this source directory. The portable, terminal,
 application and browser suites create isolated homes. `check_native_qt.py` uses

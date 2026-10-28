@@ -3,7 +3,8 @@ const fs=require('fs'),vm=require('vm'),assert=require('assert'),path=require('p
 const panel=fs.readFileSync(path.join(__dirname,'../Panel.qml'),'utf8');
 const start=panel.indexOf('  function finishAppearanceAction()');
 const code=panel.slice(start,panel.indexOf('\n  Process {',start));
-const dependencies = ['setSectionResult', 'updatePending'].map(name => {
+const helpers = ['setSectionResult', 'updatePending', 'updateRestartApplications'];
+const dependencies = helpers.map(name => {
  const at=panel.indexOf('  function '+name+'(');
  return panel.slice(at,panel.indexOf('\n  function ',at+1));
 }).join('\n');
@@ -14,17 +15,19 @@ function fixture(output) {
  root:{appearanceActionKind:'theme',globalApplyRunning:true,globalApplyCurrentStep:'theme',appearanceActionMessages:{},
  themes:[],sectionResults:{},pendingBySection:{fonts:[],theme:[]},refreshInventory:()=>{},runAppearanceAudit:()=>{},finishGlobalApplyStep:(...args)=>calls.push(args)},Qt:{callLater:f=>f()}};
  vm.createContext(c);vm.runInContext(dependencies+'\n'+code,c);
- for(const name of ['setSectionResult','updatePending']) c.root[name]=c[name];
+ for(const name of helpers) c.root[name]=c[name];
  return [c,calls];
 }
 for (const events of permutations) {
- const [c,calls]=fixture({state:'committed',readback:'test',pendingApplications:[],runtimeRefresh:{terminalReload:{failed:['ghostty']}}});
+ const restart={app:'PCManFM',action:'reopen',reason:'Fully quit and reopen PCManFM.'};
+ const [c,calls]=fixture({state:'committed',readback:'test',pendingApplications:[],restartApplications:[restart],runtimeRefresh:{terminalReload:{failed:['ghostty']}}});
  for(const [i,event] of events.entries()) {
   c.appearanceActionProcess[{out:'stdoutFinished',err:'stderrFinished',exit:'exitSeen'}[event]]=true;
   c.finishAppearanceAction();assert.equal(calls.length,i===2?1:0);
  }
  c.finishAppearanceAction();assert.equal(calls.length,1);assert(calls[0][0]);
  assert(c.root.themeActionNeedsAttention);assert(c.root.appearanceActionMessages.theme.includes('ghostty'));
+ assert.equal(c.root.restartApplications[0].app,'PCManFM');
 }
 for(const bad of [{},null,[],{state:'committed'},{state:'committed',readback:[]},{state:'already-current'}]) {
  const [c,calls]=fixture(bad);Object.assign(c.appearanceActionProcess,{stdoutFinished:true,stderrFinished:true,exitSeen:true});

@@ -730,11 +730,13 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
                                         parent_transaction=parent[1].name if parent else None, owned_fields=ownership) if targets else None
     from terminal_reload import reload_fonts
     reload_status = reload_fonts(set(targets), retry=automatic)
+    from browser_font_actions import family_notes
     return {
         "transaction": transaction_id,
         "desktopFontsVerified": True,
         "terminalReload": reload_status,
         "pendingApplications": pending,
+        "fontNotes": family_notes(system_family, terminal_family, desktop_ids),
         "targetCount": len(targets),
         "terminalCount": terminal_count,
         "registeredManualCount": manual["registeredCount"],

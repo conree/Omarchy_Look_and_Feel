@@ -1,13 +1,41 @@
 # Project status
 
 Updated 2026-10-28. Version 0.2.0 implements the documented Omarchy appearance
-interfaces. Host acceptance after a fresh login remains the owner's final step:
-the current session still uses `gtk3`, while the saved Qt selector is `qt6ct`.
-No logout or application restart has been forced. VM boot checks verify embedded
-artwork and encrypted bootability; graphical Plymouth rendering remains unverified. Application detection does
+interfaces. On October 28, the owner confirmed a successful physical-machine
+reboot, the correct unlock screen and correctly themed applications. The supplied
+desktop screenshot shows dark-themed Brave, PCManFM and a terminal, with desktop
+bars visible on both displays. Further application and scaling coverage is listed
+below. Native host diagnostics pass; the pre-restart agent session used `qt6ct`.
+The owner initiated the reboot. The current VM
+tests verify embedded artwork, graphical Plymouth rendering and encrypted
+bootability. Application detection does
 not imply control of every custom application's fonts or content.
 
+The owner has returned after the successful restart. Pre-restart context is in
+[/home/si/Projects/Omarchy_Plugins/Look_and_Feel/Handoffs/OMARCHY_LOOK_AND_FEEL_HANDOFF_2026-10-28.md](/home/si/Projects/Omarchy_Plugins/Look_and_Feel/Handoffs/OMARCHY_LOOK_AND_FEEL_HANDOFF_2026-10-28.md).
+Latest saved choices are Dracula Pro Nosferatu, SF Pro 12 pt and Victor Mono 12 pt.
+The version 0.2.0 Marketplace candidate includes the Brave explanatory-note fix,
+corrected test fixtures, release documentation and a public sample-data preview.
+Git identifies the candidate commit. Marketplace listing review is pending.
+
 ## Completed
+
+- Physical-host restart and correct unlock screen accepted by the owner on
+  October 28. Visual inspection of the supplied post-restart screenshot confirms
+  the dark appearance of Brave, PCManFM and a terminal, plus visible desktop bars
+  on both displays. The screenshot and the owner's report are retained privately
+  under `Testing/Release_2026-10-28/post-restart/`. Exact font faces, point sizes
+  and monitor scales are not established by this screenshot.
+- The full October 28 sweep passed all 28 test programs, final-build light/dark
+  Apply/Undo with 28 native captures, installation/update in a clean VM HOME,
+  real PCManFM notice/restart checks, graphical boot authentication and two
+  encrypted cold boots. Undo restored the tested settings and boot assets.
+  Independent review verifies the recorded artifacts; scope and fixture limits
+  are recorded in RELEASE_VALIDATION.md.
+- Brave's Custom label was reproduced and traced to a secondary font-family
+  name missing from its menu. Native preference-driven rendering confirms that
+  Visby CF Medium selects the Medium face. Font results now explain the label
+  without changing the selected face or creating a pending action.
 
 - An always-visible reminder asks users to save work in every open application
   before Apply. PCManFM now has a separate live restart notice when GTK appearance
@@ -107,9 +135,12 @@ installation instructions and supported application interfaces.
 
 ## Remaining acceptance and coverage limits
 
-The owner must sign out/back in to activate any previously saved Qt integration,
-then check reopened PCManFM, KiCad, Typora, Betterbird, Brave and OnlyOffice.
-This work does not claim their rendered host appearance has been verified.
+The owner accepted the physical-host reboot, unlock screen and visible desktop
+application appearance. Detailed host font/size and icon checks, KiCad, Typora,
+Betterbird, OnlyOffice, launcher Qt integration and monitor/scaling behavior
+remain to be recorded. Brave and PCManFM dark appearance is visible in the
+post-restart screenshot. A physical-host boot-artwork Apply/Undo sequence remains
+untested; successful unlock records acceptance of the existing screen.
 Existing applications may cache fonts; reopen those retaining the old font.
 
 The measured size result covers JetBrainsMono Nerd Font at 12/14 pt and scales

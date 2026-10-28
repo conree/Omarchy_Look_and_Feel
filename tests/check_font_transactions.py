@@ -19,7 +19,9 @@ def fixture(stack, tmp):
     stack.enter_context(patch.object(tx, '_home', return_value=home))
     stack.enter_context(patch.object(fonts, 'HOME', home))
     stack.enter_context(patch.object(fonts, 'CONFIG', home / '.config'))
-    stack.enter_context(patch.dict(os.environ, {'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_STATE_HOME': str(home / '.local/state')}))
+    # This fixture represents an unconfigured desktop. Do not inherit the
+    # operator's active qtct selector and create extra Qt targets accidentally.
+    stack.enter_context(patch.dict(os.environ, {'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_STATE_HOME': str(home / '.local/state'), 'QT_QPA_PLATFORMTHEME': ''}))
     return home
 
 

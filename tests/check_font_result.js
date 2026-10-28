@@ -15,7 +15,8 @@ assert(evaluate('', '', 42).message.includes('42'));
 assert(evaluate('', 'managed path component does not exist: /home/example/.config/missing', 1).message.includes('[settings path]'));
 const panel = fs.readFileSync(path.join(base, 'Panel.qml'), 'utf8');
 const fn = panel.slice(panel.indexOf('  function finishGlobalFontAction()'), panel.indexOf('  function applyAllSelectedSettings()'));
-const dependencies = ['setSectionResult', 'updatePending'].map(name => {
+const helpers = ['setSectionResult', 'updatePending', 'updateRestartApplications'];
+const dependencies = helpers.map(name => {
   const at=panel.indexOf('  function '+name+'(');
   return panel.slice(at,panel.indexOf('\n  function ',at+1));
 }).join('\n');
@@ -24,14 +25,14 @@ for (const events of permutations) {
   let calls = [];
   const context = {
     FontActionResult: evaluator,
-    globalFontProcess: {outputText:'{"transaction":"ok"}',errorText:'warning',resultExitCode:0,handled:false},
+    globalFontProcess: {outputText:JSON.stringify({transaction:'ok',restartApplications:[{app:'PCManFM',action:'reopen',reason:'Reopen PCManFM.'}]}),errorText:'warning',resultExitCode:0,handled:false},
     root: {globalApplyRunning:true, globalApplyCurrentStep:'fonts', fontActionRunning:true,
       sectionResults:{},pendingBySection:{fonts:[],theme:[]},
       finishGlobalApplyStep: (success,detail)=>calls.push([success,detail])},
     Qt: {callLater: fn=>fn()}
   };
   vm.createContext(context); vm.runInContext(dependencies+'\n'+fn, context);
-  for(const name of ['setSectionResult','updatePending']) context.root[name]=context[name];
+  for(const name of helpers) context.root[name]=context[name];
   for (const [i,event] of events.entries()) {
     context.globalFontProcess[{out:'stdoutFinished',err:'stderrFinished',exit:'exitSeen'}[event]]=true;
     context.finishGlobalFontAction();
@@ -39,5 +40,6 @@ for (const events of permutations) {
   }
   context.finishGlobalFontAction();
   assert.equal(calls.length,1); assert(calls[0][0]); assert(context.root.fontUndoAvailable);
+  assert.equal(context.root.restartApplications[0].app,'PCManFM');
 }
 console.log('9 result cases and all 6 stdout/stderr/exit arrival orders passed.');

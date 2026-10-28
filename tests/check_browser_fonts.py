@@ -3,10 +3,20 @@ from tempfile import TemporaryDirectory
 from contextlib import ExitStack
 from unittest.mock import patch
 import json,os,sys
+import subprocess
 sys.dont_write_bytecode=True
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import transaction as tx
 import browser_font_actions as app
+metadata='Test Sans\tTest Sans,Test Sans Medium\nTest Mono\tTest Mono\n'
+with patch.object(app.subprocess, 'run', return_value=subprocess.CompletedProcess([],0,metadata,'')):
+    notes=app.family_notes('Test Sans Medium','Test Mono',{'brave-browser.desktop'})
+    assert len(notes)==1 and 'Custom' in notes[0] and 'Test Sans Medium' in notes[0]
+    assert app.family_notes('Test Sans','Test Mono',{'brave-browser.desktop'})==[]
+    assert app.family_notes('Missing','Test Mono',{'brave-browser.desktop'})==[]
+    assert app.family_notes('Test Sans Medium','Test Mono',set())==[]
+with patch.object(app.subprocess,'run',side_effect=OSError('font query unavailable')):
+    assert app.family_notes('Test Sans Medium','Test Mono',{'brave-browser.desktop'})==[]
 old={'webkit':{'webprefs':{'fonts':{'standard':{'Zyyy':'Old','Jpan':'Keep Japanese'},'fixed':{'Zyyy':'Old Mono'}},'default_font_size':18}},'unrelated':{'value':1}}
 wanted={'standard':'Avenir Next','sansserif':'Avenir Next','serif':'Avenir Next','fixed':'Comic Code Ligatures','size':16,'fixed_size':16}
 for bad in ({'webkit':None},{'webkit':{'webprefs':None}},{'webkit':{'webprefs':{'fonts':7}}}):

@@ -2,6 +2,7 @@
 from contextlib import contextmanager
 from pathlib import Path
 import copy,json,os,socket
+import subprocess
 
 FIELDS = {
     'standard': ('webkit','webprefs','fonts','standard','Zyyy'),
@@ -11,6 +12,29 @@ FIELDS = {
     'size': ('webkit','webprefs','default_font_size'),
     'fixed_size': ('webkit','webprefs','default_fixed_font_size'),
 }
+
+
+def family_notes(system_family, terminal_family, desktop_ids):
+    """Explain Chromium's first-family-only menu without changing font faces."""
+    if 'brave-browser.desktop' not in desktop_ids:
+        return []
+    try:
+        result = subprocess.run(['fc-list', ':scalable=true', '--format', '%{family[0]}\t%{family}\n'],
+                                capture_output=True, text=True, timeout=5, check=True)
+        if len(result.stdout) > 1024 * 1024:
+            return []
+        primary, aliases = set(), set()
+        for line in result.stdout.splitlines():
+            first, separator, names = line.partition('\t')
+            if separator:
+                primary.add(first)
+                aliases.update(names.split(','))
+        return [f'Brave may display Custom for {family} in its font menu. '
+                'The selected font family name is preserved.'
+                for family in dict.fromkeys((system_family, terminal_family))
+                if family in aliases and family not in primary]
+    except (OSError, subprocess.SubprocessError, UnicodeError):
+        return []
 
 
 def values(data):
