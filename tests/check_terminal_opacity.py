@@ -70,6 +70,86 @@ for invalid in (None, True, -1, 101, 70.0, '70'):
     else:
         raise AssertionError(invalid)
 
+# A malformed installed terminal must not block another terminal or corrupt
+# the skipped file. Repair should include it once fixed, and Undo must restore
+# the original settings for each transaction without touching unrelated edits.
+with patch.object(opacity.shutil, 'which', side_effect=lambda exe: '/fixture/terminal' if exe in {'alacritty', 'kitty'} else None), \
+     patch.object(opacity, '_refresh', side_effect=lambda previous: ({}, [])):
+    put('alacritty-config', '[window\n')
+    original_kitty = path('kitty-config').read_text()
+    result = opacity.apply(70)
+    assert result['state'] == 'committed'
+    assert any(item['app'] == 'alacritty' and item['action'] == 'review' for item in result['pendingApplications'])
+    assert path('alacritty-config').read_text() == '[window\n'
+    assert 'background_opacity 0.7' in path('kitty-config').read_text()
+    put('alacritty-config', originals['alacritty-config'])
+    repaired = opacity.apply(70, automatic=True)
+    assert tomllib.loads(path('alacritty-config').read_text())['window']['opacity'] == 0.7
+    assert not any(item['app'] == 'alacritty' for item in repaired['pendingApplications'])
+    opacity.undo()
+    assert path('kitty-config').read_text() == original_kitty
+    assert tomllib.loads(path('alacritty-config').read_text())['window']['opacity'] == 0.6
+
+# Even if every detected terminal is malformed, later global Apply steps can
+# proceed; the pending item makes clear that no terminal was changed.
+with patch.object(opacity.shutil, 'which', side_effect=lambda exe: '/fixture/terminal' if exe == 'alacritty' else None), \
+     patch.object(opacity, '_refresh', side_effect=lambda previous: ({}, [])):
+    put('alacritty-config', '[window\n')
+    result = opacity.apply(80)
+    assert result['state'] == 'committed' and any(row['app'] == 'alacritty' for row in result['pendingApplications'])
+    assert path('alacritty-config').read_text() == '[window\n'
+    opacity.undo()
+    assert path('alacritty-config').read_text() == '[window\n'
+
+# A symlink at Ghostty's auxiliary stylesheet is unsafe; skip both Ghostty
+# targets while still allowing Kitty Apply and Undo without following it.
+with patch.object(opacity.shutil, 'which', side_effect=lambda exe: '/fixture/terminal' if exe in {'ghostty', 'kitty'} else None), \
+     patch.object(opacity, '_refresh', side_effect=lambda previous: ({}, [])):
+    css = path('ghostty-opacity-css')
+    css.parent.mkdir(parents=True, exist_ok=True)
+    outside = Path.home() / 'untouched-css'
+    outside.write_text('unchanged')
+    css.symlink_to(outside)
+    result = opacity.apply(75)
+    assert any(row['app'] == 'ghostty' for row in result['pendingApplications'])
+    assert 'background_opacity 0.75' in path('kitty-config').read_text()
+    opacity.undo()
+    assert css.is_symlink() and outside.read_text() == 'unchanged'
+    css.unlink()
+
+# Snapshot-ineligible metadata is isolated before a combined transaction.
+with patch.object(opacity.shutil, 'which', side_effect=lambda exe: '/fixture/terminal' if exe in {'kitty', 'foot'} else None), \
+     patch.object(opacity, '_refresh', side_effect=lambda previous: ({}, [])):
+    kitty = path('kitty-config')
+    kitty.chmod(0o4600)
+    before = kitty.read_bytes()
+    result = opacity.apply(85)
+    assert any(row['app'] == 'kitty' for row in result['pendingApplications'])
+    assert kitty.read_bytes() == before and kitty.stat().st_mode & 0o7777 == 0o4600
+    assert 'alpha=0.85' in path('foot-config').read_text()
+    opacity.undo()
+    assert kitty.read_bytes() == before and kitty.stat().st_mode & 0o7777 == 0o4600
+    kitty.chmod(0o600)
+
+# Oversized files are rejected before decoding, while another terminal works.
+with patch.object(opacity.shutil, 'which', side_effect=lambda exe: '/fixture/terminal' if exe in {'kitty', 'foot'} else None), \
+     patch.object(opacity, '_refresh', side_effect=lambda previous: ({}, [])):
+    kitty = path('kitty-config')
+    large = b'#' * (tx.MAX_TARGET_BYTES + 1)
+    kitty.write_bytes(large)
+    result = opacity.apply(80)
+    assert any(row['app'] == 'kitty' for row in result['pendingApplications'])
+    assert kitty.read_bytes() == large and 'alpha=0.8' in path('foot-config').read_text()
+    opacity.undo()
+    assert kitty.read_bytes() == large
+    put('kitty-config', originals['kitty-config'])
+
+with patch.object(opacity.shutil, 'which', return_value=None), \
+     patch.object(opacity, '_refresh', side_effect=lambda previous: ({}, [])):
+    result = opacity.apply(75)
+    assert any(row['app'] == 'Terminals' for row in result['pendingApplications'])
+    opacity.undo()
+
 # Both interleavings of independent Fonts/Opacity Undo preserve each other.
 with patch.object(opacity.shutil, 'which', return_value='/fixture/terminal'), patch.object(opacity, '_refresh', return_value=({}, [])):
     for undo_opacity_first in (True, False):

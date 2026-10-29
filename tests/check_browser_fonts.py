@@ -2,12 +2,13 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from contextlib import ExitStack
 from unittest.mock import patch
-import json,os,sys
+import json,os,socket,sys
 import subprocess
 sys.dont_write_bytecode=True
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import transaction as tx
 import browser_font_actions as app
+import global_font_actions as fonts
 metadata='Test Sans\tTest Sans,Test Sans Medium\nTest Mono\tTest Mono\n'
 with patch.object(app.subprocess, 'run', return_value=subprocess.CompletedProcess([],0,metadata,'')):
     notes=app.family_notes('Test Sans Medium','Test Mono',{'brave-browser.desktop'})
@@ -55,6 +56,31 @@ with TemporaryDirectory(prefix='laf-browser-fonts-') as tmp,ExitStack() as stack
     else:raise AssertionError('non-selected profile written')
     assert path.read_bytes()==before
     state.unlink()
+    # A stale local lock is diagnostic only: it remains a write barrier and
+    # none of Chromium's lock artifacts are removed by the plugin.
+    child=subprocess.Popen(['true']); dead_pid=child.pid; child.wait()
+    hostname=socket.gethostname()
+    lock.symlink_to(f'{hostname}-{dead_pid}')
+    assert app.probable_stale_lock(path) and app.busy(path)
+    with patch.object(fonts, 'HOME', home):
+        result, pending = app.build('New Sans', 12, 'New Mono', 12, {'brave-browser.desktop'})
+    assert not result and 'Open Brave normally' in pending[0]['reason']
+    before=path.read_bytes()
+    try: tx.apply_file_targets({'brave-default-preferences':payload}, label='stale-lock')
+    except RuntimeError as exc: assert 'stale profile lock' in str(exc)
+    else: raise AssertionError('stale browser lock bypassed')
+    assert lock.is_symlink() and path.read_bytes()==before
+    with patch.object(app.os, 'readlink', side_effect=[f'{hostname}-{dead_pid}', 'changed-lock']):
+        assert not app.probable_stale_lock(path)
+    with patch.object(app.os, 'kill', side_effect=PermissionError('not permitted')):
+        assert not app.probable_stale_lock(path)
+    lock.unlink()
+    for name in (f'{hostname}-{os.getpid()}', f'remote-host-{dead_pid}', 'invalid-lock', f'{hostname}-0'):
+        lock.symlink_to(name)
+        assert app.busy(path) and not app.probable_stale_lock(path)
+        assert 'stale profile lock' not in app.busy_reason(path)
+        assert lock.is_symlink()
+        lock.unlink()
     # A browser startup detected after writing leaves recoverable state, never
     # overwrites the now-live profile during rollback, and recovers after close.
     real_write=tx._atomic_write

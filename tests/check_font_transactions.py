@@ -7,11 +7,63 @@ import json
 import os
 import stat
 import sys
+import tomllib
 
 sys.dont_write_bytecode = True
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import transaction as tx
 import global_font_actions as fonts
+
+
+for original in (
+    '[font]\nsize = 12\n[font.normal]\nfamily = "Old"\nstyle = "Regular"\n[window]\nopacity = 0.7\n',
+    '[font]\nbold = { family = "Old", style = "Bold" }\nsize = 12\n[window]\nopacity = 0.7\n',
+    '[font.normal]\nstyle = "Regular"\n[window]\nopacity = 0.7\n',
+    '[font]\nnormal = {}\n[window]\nopacity = 0.7\n',
+    '[font]\nsize = 12\n[[keyboard.bindings]]\nkey = "A"\naction = "Copy"\n[window]\nopacity = 0.7\n',
+    '[font.normal]\nfamily = "Old"\n[font.bold]\nfamily = "Old"\nstyle = "Bold"\n[font.italic]\nfamily = "Old"\nstyle = "Italic"\n[window]\nopacity = 0.7\n',
+    '[font]\nnormal = { family = "Old" }\nbold_italic = { family = "Old", style = "Bold Italic" }\n[window]\nopacity = 0.7\n',
+    '[font.normal]\nfamily = "Old"\n[font.bold_italic]\nfamily = "Old"\nstyle = "Bold Italic"\n[window]\nopacity = 0.7\n',
+):
+    changed = fonts._replace_alacritty(original, 'Comic Code', 14)
+    parsed = tomllib.loads(changed)
+    assert parsed['font']['normal']['family'] == 'Comic Code'
+    assert parsed['font']['size'] == 14 and parsed['window']['opacity'] == 0.7
+    if 'style = "Regular"' in original:
+        assert parsed['font']['normal']['style'] == 'Regular'
+    if 'style = "Bold"' in original:
+        assert parsed['font']['bold']['style'] == 'Bold'
+        assert parsed['font']['bold']['family'] == 'Comic Code'
+    if '[font.italic]' in original:
+        assert parsed['font']['italic'] == {'family': 'Comic Code', 'style': 'Italic'}
+    if 'bold_italic' in original:
+        assert parsed['font']['bold_italic'] == {'family': 'Comic Code', 'style': 'Bold Italic'}
+    if '[[keyboard.bindings]]' in original:
+        assert parsed['keyboard']['bindings'] == [{'key': 'A', 'action': 'Copy'}]
+
+# Exercise production target building and transaction/undo with a nested font
+# table, including an independently edited setting outside the font section.
+with TemporaryDirectory(prefix='laf-alacritty-nested-') as tmp, ExitStack() as stack:
+    home = Path(tmp)
+    stack.enter_context(patch.object(tx, '_home', return_value=home))
+    stack.enter_context(patch.object(fonts, 'HOME', home))
+    stack.enter_context(patch.object(fonts, 'CONFIG', home / '.config'))
+    stack.enter_context(patch.dict(os.environ, {'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_STATE_HOME': str(home / '.local/state'), 'QT_QPA_PLATFORMTHEME': ''}))
+    stack.enter_context(patch.object(fonts.shutil, 'which', return_value='/fixture/alacritty'))
+    path = home / tx.FILE_TARGETS['alacritty-config']
+    path.parent.mkdir(parents=True)
+    original = b'[font]\nsize = 12\n[font.normal]\nfamily = "Old"\nstyle = "Regular"\n[font.bold_italic]\nfamily = "Old"\nstyle = "Bold Italic"\n[[keyboard.bindings]]\nkey = "A"\naction = "Copy"\n[window]\nopacity = 0.7\n'
+    path.write_bytes(original)
+    targets, _ = fonts.build_global_font_targets('Avenir Next', 12, 'Comic Code', 14, {'Alacritty.desktop'})
+    tx.apply_file_targets(targets, label='Alacritty font test')
+    assert tomllib.loads(path.read_text())['font']['normal']['family'] == 'Comic Code'
+    assert tomllib.loads(path.read_text())['font']['bold_italic'] == {'family': 'Comic Code', 'style': 'Bold Italic'}
+    path.write_text(path.read_text().replace('opacity = 0.7', 'opacity = 0.8').replace('action = "Copy"', 'action = "Paste"'))
+    tx.rollback_latest(label='Alacritty font test')
+    result = tomllib.loads(path.read_text())
+    assert result['font']['normal']['family'] == 'Old' and result['window']['opacity'] == 0.8
+    assert result['font']['bold_italic'] == {'family': 'Old', 'style': 'Bold Italic'}
+    assert result['keyboard']['bindings'] == [{'key': 'A', 'action': 'Paste'}]
 
 
 def fixture(stack, tmp):
@@ -23,6 +75,54 @@ def fixture(stack, tmp):
     # operator's active qtct selector and create extra Qt targets accidentally.
     stack.enter_context(patch.dict(os.environ, {'XDG_CONFIG_HOME': str(home / '.config'), 'XDG_STATE_HOME': str(home / '.local/state'), 'QT_QPA_PLATFORMTHEME': ''}))
     return home
+
+
+# Font builders must not follow symlinks, hang on FIFOs, or consume oversized
+# files after an earlier preflight. Missing paths are optional only when asked.
+with TemporaryDirectory(prefix='laf-font-safe-read-') as tmp, ExitStack() as stack:
+    home = fixture(stack, tmp)
+    directory = home / 'config'
+    directory.mkdir()
+    target = directory / 'font.conf'
+    assert fonts._read(target, allow_missing=True) == ''
+    try: fonts._read(target)
+    except tx.TransactionError: pass
+    else: raise AssertionError('missing required file accepted')
+    target.write_text('unchanged')
+    assert fonts._read(target) == 'unchanged'
+    target.chmod(0o4600)
+    try: fonts._read(target)
+    except tx.TransactionError: pass
+    else: raise AssertionError('special permission bits accepted')
+    target.chmod(0o600)
+    target.write_bytes(b'x' * (tx.MAX_TARGET_BYTES + 1))
+    try: fonts._read(target)
+    except tx.TransactionError: pass
+    else: raise AssertionError('oversized file accepted')
+    target.unlink()
+    os.mkfifo(target)
+    try: fonts._read(target)
+    except tx.TransactionError: pass
+    else: raise AssertionError('FIFO accepted')
+    target.unlink()
+    sentinel = home / 'sentinel'
+    sentinel.write_text('must not be read')
+    target.symlink_to(sentinel)
+    try: fonts._read(target)
+    except tx.TransactionError: pass
+    else: raise AssertionError('symlink target accepted')
+    target.unlink()
+    parent_link = home / 'parent-link'
+    parent_link.symlink_to(directory, target_is_directory=True)
+    try: fonts._read(parent_link / 'font.conf', allow_missing=True)
+    except tx.TransactionError: pass
+    else: raise AssertionError('symlink parent accepted')
+    fontconfig = home / tx.FILE_TARGETS['fontconfig-monospace']
+    fontconfig.parent.mkdir(parents=True, exist_ok=True)
+    fontconfig.write_bytes(b'x' * (tx.MAX_TARGET_BYTES + 1))
+    try: fonts.build_global_font_targets('Avenir Next', 12, 'Comic Code', 12, set())
+    except tx.TransactionError: pass
+    else: raise AssertionError('oversized shared fontconfig accepted')
 
 
 # First use has no settings, shell override, GTK, or terminal directories.

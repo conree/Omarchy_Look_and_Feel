@@ -163,14 +163,13 @@ with its example underneath. The Mode label sits beside the three mode buttons:
   automatically configured by the plugin.
 
 An application audit searches installed launchers and packages and saves its
-result. **Font support detected** means the app matches an existing shared GTK,
-Qt, or supported terminal font control. It does not apply the font, add an
+result. **Shared font control detected** means the app matches an existing shared
+GTK, Qt, or supported terminal font control. It does not apply the font, add an
 adapter, verify the rendered font, or register app-specific theme controls.
-**Font support not detected** means the app was not found, the search was
-ambiguous, or its font control is unsupported. Ambiguous and unsupported matches
-are saved and block Fonts Apply and automatic font repair. Earlier steps of
-**Apply changes** may already have completed before Fonts stops. A more specific
-audit does not remove an earlier ambiguous result. **Clear Audits** removes
+The result distinguishes no match, multiple applications, installed items without
+an identifiable launcher, and no identified supported shared control. Unresolved audit records do not
+block font changes to supported targets; those applications may not follow the
+selected font. A more specific audit does not remove an earlier ambiguous result. **Clear Audits** removes
 all saved manual audit records, including supported ones, without undoing settings
 or removing automatic support. A search with no match saves no new record.
 

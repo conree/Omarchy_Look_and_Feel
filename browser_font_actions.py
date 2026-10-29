@@ -1,7 +1,7 @@
 """Offline default-profile font preferences. The browser must remain closed."""
 from contextlib import contextmanager
 from pathlib import Path
-import copy,json,os,socket
+import copy,json,os,re,socket,stat
 import subprocess
 
 FIELDS = {
@@ -78,7 +78,50 @@ def merge(data,row):
 
 def busy(path):
     lock=Path(path).parent.parent/'SingletonLock'
-    return lock.exists() or lock.is_symlink()
+    try:
+        lock.lstat()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+
+
+def probable_stale_lock(path):
+    """Read-only diagnosis; never bypass the Chromium singleton write gate."""
+    lock = Path(path).parent.parent / 'SingletonLock'
+    try:
+        before = lock.lstat()
+        if not stat.S_ISLNK(before.st_mode) or before.st_uid != os.getuid():
+            return False
+        target = os.readlink(lock)
+        match = re.fullmatch(r'(.+)-([1-9][0-9]*)', target)
+        if not match or match.group(1) != socket.gethostname():
+            return False
+        pid = int(match.group(2))
+        if pid > 2**31 - 1:
+            return False
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            pass
+        except (OSError, OverflowError):
+            return False
+        else:
+            return False
+        after = lock.lstat()
+        return ((before.st_dev, before.st_ino, before.st_uid, before.st_mtime_ns)
+                == (after.st_dev, after.st_ino, after.st_uid, after.st_mtime_ns)
+                and os.readlink(lock) == target)
+    except (OSError, ValueError, OverflowError):
+        return False
+
+
+def busy_reason(path):
+    if probable_stale_lock(path):
+        return ('Brave appears to have a stale profile lock. Open Brave normally, '
+                'fully quit it, then Apply again.')
+    return 'Save work and close the browser, then keep it closed while applying its font defaults.'
 
 
 def assert_closed_default(path):
@@ -86,7 +129,7 @@ def assert_closed_default(path):
     from transaction import _ensure_home_path
     _ensure_home_path(path,allow_missing_leaf=False)
     if busy(path):
-        raise RuntimeError('Close Brave and keep it closed until font Apply or Undo finishes.')
+        raise RuntimeError(busy_reason(path))
     state=path.parent.parent/'Local State'
     if state.exists():
         _ensure_home_path(state,allow_missing_leaf=False)
@@ -115,11 +158,14 @@ def build(system_family,system_size,terminal_family,terminal_size,desktop_ids):
     if not path.is_file():return {},[{'app':'Brave','action':'profile-unresolved','reason':'The supported default browser profile was not found.'}]
     state=path.parent.parent/'Local State'
     if state.is_file():
-        last=json.loads(_read(state)).get('profile',{}).get('last_used','Default')
+        state_data=json.loads(_read(state))
+        if not isinstance(state_data,dict) or not isinstance(state_data.get('profile',{}),dict):
+            raise ValueError('unsupported browser profile metadata')
+        last=state_data.get('profile',{}).get('last_used','Default')
         if last!='Default':return {},[{'app':'Brave','action':'profile-unresolved','reason':'The selected browser profile needs a reviewed font adapter.'}]
     data=json.loads(_read(path))
     selected={'standard':system_family,'serif':system_family,'sansserif':system_family,'fixed':terminal_family,
               'size':round(system_size*96/72),'fixed_size':round(terminal_size*96/72)}
     if values(data) == selected:return {},[]
-    if busy(path):return {},[{'app':'Brave','action':'close-and-apply','reason':'Save work and close the browser, then keep it closed while applying its font defaults.'}]
+    if busy(path):return {},[{'app':'Brave','action':'close-and-apply','reason':busy_reason(path)}]
     return {'brave-default-preferences':(json.dumps(merge(data,selected),ensure_ascii=False,separators=(',',':'))+'\n').encode()},[]

@@ -13,6 +13,8 @@ import fcntl
 import json
 import os
 import re
+import stat
+import time
 
 import transaction as tx
 
@@ -79,16 +81,25 @@ class OperationBusy(tx.TransactionError):
 
 
 @contextmanager
-def operation_lock():
+def operation_lock(*, timeout=0):
+    """Serialize operations; automatic reconciliation skips instead of waiting."""
+    if not isinstance(timeout, (int, float)) or isinstance(timeout, bool) or not 0 <= timeout <= 30:
+        raise ValueError('invalid appearance operation lock timeout')
     directory = tx.transactions_path().parent
     tx._mkdir_private(directory)
     path = tx._ensure_home_path(directory / 'reconcile.lock')
     fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
     try:
-        try:
-            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise OperationBusy('another appearance operation is in progress; retry shortly') from exc
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise OperationBusy('another appearance operation is still in progress; retry shortly') from exc
+                time.sleep(min(0.05, remaining))
         yield
     finally:
         os.close(fd)
@@ -115,11 +126,51 @@ def latest(label):
     return matches[-1] if matches else None
 
 
+def _read_comparison(path):
+    """Read target bytes without following swapped path components.
+
+    Return None for a missing file or parent; an empty file returns b''.
+    The transaction retains its separate snapshot and unchanged checks.
+    """
+    home = tx._home()
+    try:
+        relative = path.relative_to(home)
+        if not relative.parts or '..' in relative.parts:
+            raise ValueError('invalid relative target path')
+    except ValueError as exc:
+        raise tx.TransactionError('comparison target is outside the home directory') from exc
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    opened = []
+    try:
+        directory = os.open(home, flags)
+        opened.append(directory)
+        for component in relative.parts[:-1]:
+            directory = os.open(component, flags, dir_fd=directory)
+            opened.append(directory)
+        fd = os.open(relative.parts[-1], os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=directory)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) & ~0o777 or info.st_size > tx.MAX_TARGET_BYTES):
+                raise tx.TransactionError('comparison target cannot be safely read')
+            payload = stream.read(tx.MAX_TARGET_BYTES + 1)
+            if len(payload) > tx.MAX_TARGET_BYTES:
+                raise tx.TransactionError('comparison target exceeds the size limit')
+            return payload
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise tx.TransactionError('comparison target cannot be safely read') from exc
+    finally:
+        for fd in reversed(opened):
+            os.close(fd)
+
+
 def changed_targets(targets):
     result = {}
     for name, payload in targets.items():
         path = tx._ensure_home_path(Path.home() / tx.FILE_TARGETS[name], allow_missing_parents=True)
-        if not path.exists() or path.read_bytes() != payload:
+        if _read_comparison(path) != payload:
             result[name] = payload
     return result
 
@@ -253,13 +304,16 @@ def undo_theme():
 
 def reconcile():
     import controller
+    import requirements
     policy = read()
-    pending, results = [], {}
+    pending, results, pending_by_section = [], {}, {}
     for section in ('theme', 'fonts', 'icons', 'opacity', 'blur'):
         value = policy.get(section)
         if value is None:
             continue
+        section_pending = []
         try:
+            requirements.require(section)
             if section == 'theme':
                 result = apply_theme(value['mode'], value['light'], value['dark'], automatic=True)
             elif section == 'blur':
@@ -274,32 +328,47 @@ def reconcile():
             else:
                 result = controller.apply_global_fonts(value['systemId'], value['systemSize'],
                                                        value['terminalId'], value['terminalSize'], automatic=True)
-            pending.extend(result.get('pendingApplications', []))
+            section_pending.extend(result.get('pendingApplications', []))
             if result.get('blocked'):
-                pending.append({'app': 'Fonts', 'action': 'manual-audit',
+                section_pending.append({'app': 'Fonts', 'action': 'manual-audit',
                                 'reason': 'A registered application no longer has a verified font adapter; review its application audit before applying fonts.'})
             for name in result.get('terminalReload', {}).get('failed', []):
-                if not any(row.get('app') == name and row.get('action') == 'reload' for row in pending):
-                    pending.append({'app': name, 'action': 'reload', 'reason': f'Saved {section} settings could not be loaded into its running window; reopen it or retry Apply.'})
+                if not any(row.get('app') == name and row.get('action') == 'reload' for row in section_pending):
+                    section_pending.append({'app': name, 'action': 'reload', 'reason': f'Saved {section} settings could not be loaded into its running window; reopen it or retry Apply.'})
             results[section] = result
         except (OSError, RuntimeError, ValueError) as exc:
-            pending.append({'app': section, 'action': 'retry', 'reason': str(exc)})
+            section_pending.append({'app': section, 'action': 'retry', 'reason': str(exc)})
+        pending_by_section[section] = section_pending
+        pending.extend(section_pending)
     status = {'schemaVersion': 1, 'pendingApplications': pending, 'results': results,
-              'renderedAppearanceVerified': False}
+              'pendingBySection': pending_by_section, 'renderedAppearanceVerified': False}
+    if policy.get('fonts') is None:
+        # A legacy blocked Apply may have left no saved font policy. Validate
+        # the registry independently so a resolved audit can clear its old
+        # warning without treating a failed read as proof of resolution.
+        try:
+            status['auditRegistryStatus'] = controller.validated_apply_status()
+        except (OSError, RuntimeError, ValueError):
+            status['auditRegistryStatus'] = None
     if policy.get('blur') is None:
         from blur_actions import refresh as refresh_blur
         try:
             refresh_blur()
         except (OSError, RuntimeError, ValueError) as exc:
-            pending.append({'app': 'blur', 'action': 'retry', 'reason': str(exc)})
-    if 'opacity' not in results:
+            item = {'app': 'blur', 'action': 'retry', 'reason': str(exc)}
+            pending.append(item)
+            pending_by_section['blur'] = [item]
+    if policy.get('opacity') is None:
         from opacity_actions import _refresh
         try:
             _, opacity_pending = _refresh({})
             pending.extend(opacity_pending)
+            pending_by_section['opacity'] = opacity_pending
             results['opacity'] = {'pendingApplications': opacity_pending}
         except (OSError, RuntimeError, ValueError) as exc:
-            pending.append({'app': 'opacity', 'action': 'retry', 'reason': str(exc)})
+            item = {'app': 'opacity', 'action': 'retry', 'reason': str(exc)}
+            pending.append(item)
+            pending_by_section['opacity'] = [item]
     from application_restarts import add_to_result
     add_to_result(status)
     path = tx.transactions_path().parent / 'reconcile-status.json'

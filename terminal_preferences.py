@@ -25,6 +25,12 @@ FIELDS = {name: FONT_FIELDS[name] | OPACITY_FIELDS[name]
 
 
 def _heading(line):
+    # TOML array tables end the preceding section just like ordinary tables.
+    # Keep their name distinct so a [[font...]] array is never owned as a
+    # regular font table.
+    array = re.fullmatch(r'\s*\[\[([^\[\]]+)\]\]\s*(?:[#;].*)?\n?', line)
+    if array:
+        return '[' + array[1].strip() + ']'
     match = re.fullmatch(r'\s*\[([^\[\]]+)\]\s*(?:[#;].*)?\n?', line)
     return match[1].strip() if match else None
 

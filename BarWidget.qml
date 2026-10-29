@@ -15,6 +15,10 @@ BarWidget {
   property var reconciliationPending: []
   property var restartApplications: []
   property bool reconciliationFailed: false
+  property int auditGeneration: 0
+  property bool auditRefreshPending: false
+  property var sectionGeneration: ({ fonts: 0, theme: 0, opacity: 0, icons: 0, blur: 0 })
+  property var reconciliationOwners: ({})
   readonly property string appearanceConfigDir: {
     var configured = Quickshell.env("XDG_CONFIG_HOME")
     return (configured && configured.charAt(0) === "/" ? configured : Quickshell.env("HOME") + "/.config") + "/omarchy-look-and-feel/"
@@ -63,11 +67,44 @@ BarWidget {
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: {
-      var panel = panelLoader.item
-      if (reconcileProcess.running || (panel && (panel.globalApplyRunning || panel.appearanceActionRunning || panel.fontActionRunning))) return
-      reconcileProcess.running = true
-    }
+    onTriggered: root.tryReconcile()
+  }
+
+  function tryReconcile() {
+    var panel = panelLoader.item
+    if (reconcileProcess.running || (reconcileProcess.started && !reconcileProcess.handled)
+        || (panel && (panel.globalApplyRunning || panel.appearanceActionRunning || panel.fontActionRunning
+                      || panel.manualAppActionRunning || panel.manualAuditClearRunning))) return
+    root.auditRefreshPending = false
+    reconcileProcess.running = true
+  }
+
+  function auditRegistryChanged() {
+    root.auditGeneration += 1
+    root.auditRefreshPending = true
+    Qt.callLater(root.tryReconcile)
+  }
+
+  function sectionApplied(section) {
+    var generations = Object.assign({}, root.sectionGeneration)
+    generations[section] = (generations[section] || 0) + 1
+    root.sectionGeneration = generations
+    var owners = Object.assign({}, root.reconciliationOwners)
+    root.reconciliationPending = root.reconciliationPending.filter(function(item) {
+      var key = JSON.stringify(item)
+      var previous = owners[key] || []
+      if (previous.indexOf(section) < 0) return true
+      owners[key] = previous.filter(function(owner) { return owner !== section })
+      return owners[key].length > 0
+    })
+    root.reconciliationOwners = owners
+    root.auditRefreshPending = true
+    Qt.callLater(root.tryReconcile)
+  }
+
+  function isAuditAttention(item) {
+    return (item.app === "Audited applications" && item.action === "review")
+        || (item.app === "Fonts" && item.action === "manual-audit")
   }
 
   function finishReconciliation() {
@@ -77,17 +114,66 @@ BarWidget {
     if (reconcileProcess.resultExitCode !== 0) {
       root.reconciliationFailed = true
       root.reconciliationMessage = reconcileProcess.errorText.trim() || "The appearance check failed."
+      if (root.auditRefreshPending) Qt.callLater(root.tryReconcile)
       return
     }
     try {
       var result = JSON.parse(reconcileProcess.outputText)
-      if (result.schemaVersion === 1 && result.skipped === "busy") return
+      if (result.schemaVersion === 1 && result.skipped === "busy") {
+        if (root.auditRefreshPending) Qt.callLater(root.tryReconcile)
+        return
+      }
       if (result.schemaVersion !== 1 || !Array.isArray(result.pendingApplications)) throw new Error("Invalid reconciliation result")
       root.reconciliationFailed = false
-      root.reconciliationPending = result.pendingApplications
+      var owners = ({})
+      var attributed = result.pendingBySection
+      if (!attributed || typeof attributed !== "object" || Array.isArray(attributed)) {
+        attributed = ({})
+        Object.keys(result.results || {}).forEach(function(section) {
+          attributed[section] = (result.results[section] || {}).pendingApplications || []
+        })
+      }
+      Object.keys(attributed).forEach(function(section) {
+        ;(attributed[section] || []).forEach(function(item) {
+          var key = JSON.stringify(item)
+          if (!owners[key]) owners[key] = []
+          if (owners[key].indexOf(section) < 0) owners[key].push(section)
+        })
+      })
+      var staleSections = Object.keys(root.sectionGeneration).filter(function(section) {
+        return (root.sectionGeneration[section] || 0) !== ((reconcileProcess.sectionGeneration || {})[section] || 0)
+      })
+      if (staleSections.length) {
+        result.pendingApplications = result.pendingApplications.filter(function(item) {
+          var key = JSON.stringify(item), previous = owners[key] || []
+          if (!previous.length) return true
+          owners[key] = previous.filter(function(section) { return staleSections.indexOf(section) < 0 })
+          return owners[key].length > 0
+        })
+        root.auditRefreshPending = true
+      }
+      // A result captured before an audit change cannot describe the current
+      // registry. Keep unrelated notices and request a fresh audit read.
+      if (reconcileProcess.auditGeneration !== root.auditGeneration) {
+        result.pendingApplications = result.pendingApplications.filter(function(item) { return !root.isAuditAttention(item) })
+        root.auditRefreshPending = true
+      }
+      // A successful, current font reconciliation is the evidence that an
+      // old audit warning no longer applies. Failed or stale reads must leave
+      // the panel's prior warning in place.
       var panel = panelLoader.item
+      var fontResult = (result.results || {}).fonts
+      var registry = result.auditRegistryStatus
+      var fontAuditResolved = fontResult && Array.isArray(attributed.fonts)
+        && !attributed.fonts.some(function(item) { return root.isAuditAttention(item) })
+      var registryAuditResolved = !fontResult && registry && registry.unsupportedCount === 0
+      if (panel && (fontAuditResolved || registryAuditResolved)
+          && reconcileProcess.auditGeneration === root.auditGeneration && staleSections.indexOf("fonts") < 0
+          && typeof panel.clearAuditAttention === "function") panel.clearAuditAttention(false)
+      root.reconciliationPending = result.pendingApplications
+      root.reconciliationOwners = owners
       var opacity = (result.results || {}).opacity
-      if (panel && opacity && Array.isArray(opacity.pendingApplications)) {
+      if (panel && staleSections.indexOf("opacity") < 0 && opacity && Array.isArray(opacity.pendingApplications)) {
         panel.updatePending("opacity", opacity)
         panel.opacityActionNeedsAttention = opacity.pendingApplications.length > 0
         if (!panel.opacityActionNeedsAttention && (panel.sectionResults.opacity || {}).state === "pending")
@@ -96,6 +182,7 @@ BarWidget {
       if (Array.isArray(result.restartApplications)) root.restartApplications = result.restartApplications
       root.reconciliationMessage = result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join("\n")
     } catch (e) { root.reconciliationFailed = true; root.reconciliationMessage = "The appearance check returned an unreadable result." }
+    if (root.auditRefreshPending) Qt.callLater(root.tryReconcile)
   }
 
   Process {
@@ -107,8 +194,14 @@ BarWidget {
     property bool stderrFinished: false
     property bool exitSeen: false
     property bool handled: false
+    property bool started: false
+    property int auditGeneration: 0
+    property var sectionGeneration: ({})
     command: ["/usr/bin/python3", "-B", decodeURIComponent(String(Qt.resolvedUrl("controller.py")).replace(/^file:\/\//, "")), "reconcile"]
     onRunningChanged: if (running) {
+      started = true
+      auditGeneration = root.auditGeneration
+      sectionGeneration = Object.assign({}, root.sectionGeneration)
       outputText = ""
       errorText = ""
       resultExitCode = -1
@@ -116,7 +209,7 @@ BarWidget {
       stderrFinished = false
       exitSeen = false
       handled = false
-    }
+    } else if (root.auditRefreshPending && handled) Qt.callLater(root.tryReconcile)
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
       reconcileProcess.outputText = String(text || "")
       reconcileProcess.stdoutFinished = true

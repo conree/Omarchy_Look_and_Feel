@@ -2,7 +2,9 @@
 from pathlib import Path
 import hashlib
 import json
+import os
 import shutil
+import stat
 
 import transaction as tx
 from terminal_preferences import OPACITY_FIELDS, decode, encode
@@ -19,59 +21,101 @@ def validate_percent(value):
     return value
 
 
-def build(percent):
+def build(percent, pending=None):
     amount = str(validate_percent(percent) / 100)
     targets = {}
     for target, executable in TERMINALS.items():
         if not shutil.which(executable):
             continue
-        if target == 'wezterm-config':
-            tx.require_wezterm_location()
-        path = tx._ensure_home_path(Path.home() / tx.FILE_TARGETS[target], allow_missing_parents=True)
-        raw = path.read_bytes() if path.exists() else b''
-        if target == 'wezterm-config':
-            import wezterm_blocks as blocks
-            data = blocks.decode(raw.decode())
-            data['opacity'] = f'config.window_background_opacity = {amount}\n'
-            targets[target] = blocks.encode(data).encode()
-            continue
-        data = decode(target, raw)
-        if target == 'ghostty-config':
-            data['background-opacity'] = f'background-opacity = {amount}\n'
-            # Explicit cell backgrounds belong to prompts and other terminal
-            # UI. Keep them opaque while changing only the window background.
-            data['background-opacity-cells'] = 'background-opacity-cells = false\n'
-            css_path = Path.home() / tx.FILE_TARGETS['ghostty-opacity-css']
-            data['opacity-css-import'] = 'gtk-custom-css = ' + json.dumps(str(css_path)) + '\n'
-            # GTK caches its global user stylesheet in already-running apps.
-            # Ghostty reloads this per-app USER-priority provider on SIGUSR2,
-            # allowing a repair without closing the user's terminal sessions.
-            surfaces = ', '.join('window.window:not(.background)' + suffix for suffix in (
-                '', ' treeview', ' textview', ' textview text', ' .view',
-                ' list', ' row', ' notebook', ' stack', ' scrolledwindow'))
-            targets['ghostty-opacity-css'] = (
-                '/* Preserve native terminal transparency beneath GTK user palettes. */\n'
-                + surfaces + ' { background-color: transparent; background-image: none; }\n').encode()
-        elif target == 'kitty-config':
-            data['background_opacity'] = f'background_opacity {amount}\n'
-        elif target == 'alacritty-config':
-            old = data['window/opacity'] or ''
-            key = 'window.opacity' if old.lstrip().startswith('window.opacity') else 'opacity'
-            data['window/opacity'] = f'{key} = {amount}\n'
-        else:
-            # Older Foot uses [colors]; current Foot has separate light/dark.
-            fields = ['colors/alpha'] if data['colors/alpha'] is not None else ['colors-dark/alpha', 'colors-light/alpha']
-            for field in fields:
-                data[field] = f'alpha={amount}\n'
-        targets[target] = encode(target, data)
-    if not targets:
-        raise tx.TransactionError('No supported terminal is installed')
+        try:
+            candidate = _build_terminal(target, amount)
+            _preflight_terminal(candidate)
+            targets.update(candidate)
+        except (OSError, RuntimeError, ValueError):
+            if pending is None:
+                raise
+            pending.append({'app': executable, 'action': 'review',
+                            'reason': 'Its opacity settings could not be safely read or updated; they were skipped.'})
+    if not targets and not pending:
+        if pending is None:
+            raise tx.TransactionError('No supported terminal opacity settings could be prepared')
+        pending.append({'app': 'Terminals', 'action': 'review',
+                        'reason': 'No supported terminal opacity control was detected; no terminal settings were changed.'})
+    return targets
+
+
+def _preflight_terminal(targets):
+    # Identify unsafe files before combining terminals. The transaction still
+    # repeats its own snapshot and unchanged checks to catch subsequent races.
+    for path in tx._target_paths(targets).values():
+        _read_terminal(path)
+
+
+def _read_terminal(path):
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, 'O_NOFOLLOW', 0))
+    except FileNotFoundError:
+        return b''
+    with os.fdopen(fd, 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                or stat.S_IMODE(info.st_mode) & ~0o777 or info.st_size > tx.MAX_TARGET_BYTES):
+            raise tx.TransactionError('Terminal opacity target cannot be safely replaced')
+        raw = stream.read(tx.MAX_TARGET_BYTES + 1)
+        if len(raw) > tx.MAX_TARGET_BYTES:
+            raise tx.TransactionError('Terminal opacity target exceeds the size limit')
+        return raw
+
+
+def _build_terminal(target, amount):
+    targets = {}
+    if target == 'wezterm-config':
+        tx.require_wezterm_location()
+    path = tx._ensure_home_path(Path.home() / tx.FILE_TARGETS[target], allow_missing_parents=True)
+    raw = _read_terminal(path)
+    if target == 'wezterm-config':
+        import wezterm_blocks as blocks
+        data = blocks.decode(raw.decode())
+        data['opacity'] = f'config.window_background_opacity = {amount}\n'
+        targets[target] = blocks.encode(data).encode()
+        return targets
+    data = decode(target, raw)
+    if target == 'ghostty-config':
+        data['background-opacity'] = f'background-opacity = {amount}\n'
+        # Explicit cell backgrounds belong to prompts and other terminal
+        # UI. Keep them opaque while changing only the window background.
+        data['background-opacity-cells'] = 'background-opacity-cells = false\n'
+        css_path = tx._ensure_home_path(Path.home() / tx.FILE_TARGETS['ghostty-opacity-css'], allow_missing_parents=True)
+        if css_path.is_dir():
+            raise tx.TransactionError('Ghostty opacity stylesheet is not a file')
+        data['opacity-css-import'] = 'gtk-custom-css = ' + json.dumps(str(css_path)) + '\n'
+        # GTK caches its global user stylesheet in already-running apps.
+        # Ghostty reloads this per-app USER-priority provider on SIGUSR2,
+        # allowing a repair without closing the user's terminal sessions.
+        surfaces = ', '.join('window.window:not(.background)' + suffix for suffix in (
+            '', ' treeview', ' textview', ' textview text', ' .view',
+            ' list', ' row', ' notebook', ' stack', ' scrolledwindow'))
+        targets['ghostty-opacity-css'] = (
+            '/* Preserve native terminal transparency beneath GTK user palettes. */\n'
+            + surfaces + ' { background-color: transparent; background-image: none; }\n').encode()
+    elif target == 'kitty-config':
+        data['background_opacity'] = f'background_opacity {amount}\n'
+    elif target == 'alacritty-config':
+        old = data['window/opacity'] or ''
+        key = 'window.opacity' if old.lstrip().startswith('window.opacity') else 'opacity'
+        data['window/opacity'] = f'{key} = {amount}\n'
+    else:
+        # Older Foot uses [colors]; current Foot has separate light/dark.
+        fields = ['colors/alpha'] if data['colors/alpha'] is not None else ['colors-dark/alpha', 'colors-light/alpha']
+        for field in fields:
+            data[field] = f'alpha={amount}\n'
+    targets[target] = encode(target, data)
     return targets
 
 
 def _hash(target):
     path = tx._ensure_home_path(Path.home() / tx.FILE_TARGETS[target], allow_missing_parents=True)
-    raw = path.read_bytes() if path.exists() else b''
+    raw = _read_terminal(path)
     if target == 'wezterm-config':
         import wezterm_blocks
         values = {'opacity': wezterm_blocks.decode(raw.decode())['opacity']}
@@ -146,7 +190,8 @@ def refresh(previous):
 def apply(percent, *, automatic=False):
     import appearance_policy as policy
     validate_percent(percent)
-    targets = build(percent)
+    skipped = []
+    targets = build(percent, skipped)
     changed = policy.changed_targets(targets)
     previous = {target: _hash(target) for target in changed if target in TERMINALS}
     if 'ghostty-opacity-css' in changed:
@@ -162,6 +207,7 @@ def apply(percent, *, automatic=False):
                                      parent_transaction=parent[1].name if parent else None,
                                      owned_fields={**OPACITY_FIELDS, 'appearance-policy': {'opacity'}}) if targets else None
     reload_status, pending = refresh(previous)
+    pending.extend(skipped)
     return {'kind': 'opacity', 'state': 'committed' if identity else 'already-current',
             'transaction': identity, 'after': f'{percent}%', 'readback': f'{percent}%',
             'opacityPercent': percent, 'terminalReload': reload_status,
@@ -183,11 +229,14 @@ def undo():
         if child.get('parentTransaction') == parent[1].name and child['state'] == 'committed':
             targets.update(row['id'] for row in child['targets'])
     previous = {target: _hash(target) for target in targets if target in TERMINALS}
-    css_path = tx._ensure_home_path(Path.home() / tx.FILE_TARGETS['ghostty-opacity-css'], allow_missing_parents=True)
-    css_before = css_path.read_bytes() if css_path.exists() else None
+    css_path = (tx._ensure_home_path(Path.home() / tx.FILE_TARGETS['ghostty-opacity-css'], allow_missing_parents=True)
+                if 'ghostty-opacity-css' in targets else None)
+    css_before = _read_terminal(css_path) if css_path and css_path.exists() else None
     identity = tx.rollback_latest(label=LABEL)
     changed = {target: value for target, value in previous.items() if value != _hash(target)}
-    css_after = css_path.read_bytes() if css_path.exists() else None
+    if css_path:
+        tx._ensure_home_path(css_path, allow_missing_parents=True)
+    css_after = _read_terminal(css_path) if css_path and css_path.exists() else None
     if css_before != css_after:
         changed.setdefault('ghostty-config', previous.get('ghostty-config', _hash('ghostty-config')))
     reload_status, pending = refresh(changed)

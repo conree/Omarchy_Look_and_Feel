@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import copy
 import math
 import os
 import re
 import shutil
+import stat
+import tomllib
 from pathlib import Path
 
 from font_application_inventory import TERMINALS
@@ -35,16 +38,46 @@ TERMINAL_COMMANDS = {
 
 
 def _read(path: Path, *, allow_missing: bool = False) -> str:
-    if path.is_symlink():
-        raise TransactionError("a managed font configuration is a symlink; refusing to replace it")
+    # Open every component relative to an already-open home directory. This
+    # prevents a parent or leaf symlink swapped after preflight from redirecting
+    # the read, and O_NONBLOCK avoids hanging on a FIFO or device.
+    import transaction as tx
+    home = tx._home()
+    path = Path(path)
+    absolute = path if path.is_absolute() else home / path
     try:
-        return path.read_text(encoding="utf-8")
+        relative = absolute.relative_to(home)
+        if not relative.parts or '..' in relative.parts:
+            raise ValueError('invalid home-relative path')
+    except ValueError as exc:
+        raise TransactionError('a managed font path is outside the home directory') from exc
+    directory_flags = os.O_RDONLY | os.O_DIRECTORY | getattr(os, 'O_NOFOLLOW', 0)
+    opened = []
+    try:
+        directory = os.open(home, directory_flags)
+        opened.append(directory)
+        for component in relative.parts[:-1]:
+            directory = os.open(component, directory_flags, dir_fd=directory)
+            opened.append(directory)
+        fd = os.open(relative.parts[-1], os.O_RDONLY | os.O_NONBLOCK | getattr(os, 'O_NOFOLLOW', 0), dir_fd=directory)
+        with os.fdopen(fd, 'rb') as stream:
+            info = os.fstat(stream.fileno())
+            if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+                    or stat.S_IMODE(info.st_mode) & ~0o777 or info.st_size > tx.MAX_TARGET_BYTES):
+                raise TransactionError('a managed font configuration cannot be safely read')
+            raw = stream.read(tx.MAX_TARGET_BYTES + 1)
+            if len(raw) > tx.MAX_TARGET_BYTES:
+                raise TransactionError('a managed font configuration exceeds the size limit')
+        return raw.decode('utf-8')
     except FileNotFoundError:
         if allow_missing:
             return ""
         raise TransactionError("a managed font configuration is missing")
     except (OSError, UnicodeError) as exc:
         raise TransactionError("a managed font configuration could not be read safely") from exc
+    finally:
+        for fd in reversed(opened):
+            os.close(fd)
 
 
 def _replace_ini_value(text: str, section: str, key: str, value: str) -> str:
@@ -70,30 +103,93 @@ def _quoted(value: str) -> str:
 
 
 def _replace_alacritty(text: str, family: str, size: int) -> str:
+    try:
+        parsed = tomllib.loads(text)
+    except tomllib.TOMLDecodeError as exc:
+        raise TransactionError('Alacritty configuration is not valid TOML') from exc
+    font = parsed.get('font', {})
+    if not isinstance(font, dict):
+        raise TransactionError('Alacritty font configuration is not a table')
     lines = text.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == "[font]"), None)
+    heading = re.compile(r'^\s*\[([^\[\]]+)\]\s*(?:#.*)?$')
+    array_heading = re.compile(r'^\s*\[\[([^\[\]]+)\]\]\s*(?:#.*)?$')
+    def section(line):
+        array = array_heading.match(line)
+        if array:
+            return '[' + array.group(1).strip() + ']'
+        match = heading.match(line)
+        return match.group(1).strip() if match else None
+    start = next((i for i, line in enumerate(lines) if section(line) == 'font'), None)
     if start is None:
         if lines and lines[-1].strip():
             lines.append("")
-        lines.extend(["[font]", f"normal = {{ family = {_quoted(family)} }}", f"size = {size}"])
-    else:
-        end = next((i for i in range(start + 1, len(lines)) if re.match(r"\s*\[.+\]\s*$", lines[i])), len(lines))
-        found_family = False
-        found_size = False
-        for i in range(start + 1, end):
-            if re.match(r"\s*(normal|bold|italic)\s*=", lines[i]):
-                if re.search(r"\bfamily\s*=", lines[i]):
-                    lines[i] = re.sub(r"(\bfamily\s*=\s*)(\"(?:\\.|[^\"])*\"|'(?:\\.|[^'])*')", lambda m: m.group(1) + _quoted(family), lines[i], count=1)
-                    found_family = True
-            if re.match(r"\s*size\s*=", lines[i]):
-                lines[i] = re.sub(r"^(\s*size\s*=\s*).*$", rf"\g<1>{size}", lines[i])
-                found_size = True
-        if not found_family:
-            lines.insert(end, f"normal = {{ family = {_quoted(family)} }}")
-            end += 1
-        if not found_size:
-            lines.insert(end, f"size = {size}")
-    return "\n".join(lines).rstrip() + "\n"
+        lines.append('[font]')
+        start = len(lines) - 1
+    end = next((i for i in range(start + 1, len(lines)) if section(lines[i]) is not None), len(lines))
+    string_value = r'("(?:\\.|[^"\\])*"|\'[^\']*\')'
+    normal_seen = False
+    size_seen = False
+    changed_roles = set()
+    for i in range(start + 1, end):
+        normal = re.match(r'^\s*(normal|bold|italic|bold_italic)\s*=\s*\{', lines[i])
+        if normal:
+            role = normal.group(1)
+            pattern = r'(\bfamily\s*=\s*)' + string_value
+            if re.search(pattern, lines[i]):
+                lines[i] = re.sub(pattern, lambda m: m.group(1) + _quoted(family), lines[i], count=1)
+                changed_roles.add(role)
+            elif role == 'normal':
+                separator = '' if re.search(r'\{\s*\}', lines[i]) else ', '
+                lines[i] = re.sub(r'\{', lambda _: '{ family = ' + _quoted(family) + separator, lines[i], count=1)
+                changed_roles.add(role)
+            if role == 'normal':
+                normal_seen = True
+        if re.match(r'^\s*size\s*=', lines[i]):
+            lines[i] = re.sub(r'^(\s*size\s*=\s*)[^#]*', lambda m: m.group(1) + str(size) + ' ', lines[i]).rstrip()
+            size_seen = True
+    # Nested role tables are distinct from inline tables. Modify their
+    # existing family in place; insert the normal family if it is missing.
+    for role in ('normal', 'bold', 'italic', 'bold_italic'):
+        nested = next((i for i, line in enumerate(lines) if section(line) == 'font.' + role), None)
+        if nested is None:
+            continue
+        nested_end = next((i for i in range(nested + 1, len(lines)) if section(lines[i]) is not None), len(lines))
+        at = next((i for i in range(nested + 1, nested_end) if re.match(r'^\s*family\s*=', lines[i])), None)
+        if at is None:
+            if role != 'normal':
+                continue
+            lines.insert(nested + 1, 'family = ' + _quoted(family))
+            if nested < end:
+                end += 1
+        else:
+            pattern = r'^(\s*family\s*=\s*)' + string_value
+            lines[at], count = re.subn(pattern, lambda m: m.group(1) + _quoted(family), lines[at], count=1)
+            if not count:
+                raise TransactionError('Alacritty font family needs a supported string value')
+        if role == 'normal':
+            normal_seen = True
+        changed_roles.add(role)
+    if not normal_seen:
+        if 'normal' in font:
+            raise TransactionError('Alacritty normal font needs a supported table layout')
+        lines.insert(end, f'normal = {{ family = {_quoted(family)} }}')
+        changed_roles.add('normal')
+        end += 1
+    if not size_seen:
+        lines.insert(end, f'size = {size}')
+    result = "\n".join(lines).rstrip() + "\n"
+    try:
+        checked = tomllib.loads(result)
+        expected = copy.deepcopy(parsed)
+        expected_font = expected.setdefault('font', {})
+        expected_font['size'] = size
+        for role in changed_roles:
+            expected_font.setdefault(role, {})['family'] = family
+        if checked != expected:
+            raise ValueError('font settings do not match')
+    except (tomllib.TOMLDecodeError, KeyError, TypeError, ValueError) as exc:
+        raise TransactionError('Alacritty font configuration could not be updated safely') from exc
+    return result
 
 
 def _replace_foot(text: str, family: str, size: int) -> str:
@@ -270,7 +366,7 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
     from transaction import _ensure_home_path
     fontconfig_path = _ensure_home_path(HOME / FILE_TARGETS['fontconfig-monospace'], allow_missing_parents=True)
     try:
-        fontconfig_text = fontconfig_path.read_bytes().decode('utf-8') if fontconfig_path.exists() else ''
+        fontconfig_text = _read(fontconfig_path, allow_missing=True)
         targets['fontconfig-monospace'] = fontconfig_policy(fontconfig_text, terminal_family).encode()
     except (OSError, ValueError) as exc:
         raise TransactionError(str(exc)) from exc

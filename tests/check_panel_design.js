@@ -91,6 +91,7 @@ function fixture({loaded = true} = {}) {
     }});
   }
   context.unlockStatusTimer = {start() {}, stop() {}};
+  context.manualAppField = {clear() { root.manualAppQuery = ''; }};
   context.contentViewport = {contentY: 123};
   vm.createContext(context);
   for (const match of panel.matchAll(/^import "([^"\n]+\.js)" as (\w+)/gm)) {
@@ -213,6 +214,18 @@ test('zero opacity can be applied and failed opacity stops later steps', () => {
   assert(!f.root.globalApplyRunning);
   assert.equal(f.root.selectedOpacity, 0);
   assert.deepStrictEqual(actionSteps(f), ['theme', 'opacity']);
+});
+
+test('successful icon and blur apply and undo invalidate their reconciliation section', () => {
+  const f = fixture(), sections = [];
+  f.root.hostWidget = {restartApplications: [], reconciliationPending: [], sectionApplied: section => sections.push(section)};
+  for (const kind of ['icons', 'blur']) {
+    assert(f.root.runAppearanceAction(kind, ['fixture']));
+    f.appearance({state: 'committed', readback: 'value'});
+    assert(f.root.runAppearanceAction(kind, ['fixture']));
+    f.appearance({rolledBack: 'transaction'});
+  }
+  assert.deepStrictEqual(sections, ['icons', 'icons', 'blur', 'blur']);
 });
 
 test('cached examples display before discovery without authorizing Apply or Undo', () => {
@@ -491,9 +504,103 @@ test('global Apply includes explicitly changed boot artwork last', () => {
 
 test('audit message describes the current finding, not cumulative registrations', () => {
   const f = fixture();
-  assert.equal(f.root.auditResultMessage({status: 'launcher-found', findings: [{fontStatus: 'registered'}], unsupportedCount: 1}), 'Font support detected');
-  assert.equal(f.root.auditResultMessage({status: 'launcher-found', findings: [{fontStatus: 'unsupported'}], registeredCount: 1}), 'Font support not detected');
-  assert.equal(f.root.auditResultMessage({status: 'not-found', findings: []}), 'Font support not detected. No matching installed application was found.');
+  assert.equal(f.root.auditResultMessage({status: 'launcher-found', findings: [{fontStatus: 'registered'}], unsupportedCount: 1}), 'Shared font control detected. The rendered font has not been verified.');
+  assert.equal(f.root.auditResultMessage({status: 'launcher-found', findings: [{fontStatus: 'unsupported'}], registeredCount: 1}), 'No supported shared font control was identified. The rendered font has not been verified.');
+  assert.equal(f.root.auditResultMessage({status: 'not-found', findings: []}), 'No matching installed application was found. Try a different name.');
+  const ambiguous = [{framework: 'ambiguous or package-only result', fontStatus: 'unsupported'}];
+  assert.equal(f.root.auditResultMessage({status: 'launcher-found', findings: ambiguous}), 'Multiple applications matched. Search for a specific launcher to audit one application.');
+  assert.equal(f.root.auditResultMessage({status: 'installed-item-found-no-launcher', findings: ambiguous}), 'An installed item was found, but its application font control could not be identified. Try a specific launcher.');
+});
+
+test('clearing audit attention preserves unrelated pending actions', () => {
+  const f = fixture();
+  const audit = {app: 'Audited applications', action: 'review', reason: 'unresolved'};
+  const oldAudit = {app: 'Fonts', action: 'manual-audit', reason: 'old'};
+  const mail = {app: 'Betterbird', action: 'close', reason: 'close first'};
+  f.root.pendingBySection = {fonts: [audit, mail], theme: []};
+  f.root.hostWidget = {reconciliationPending: [oldAudit, mail], restartApplications: []};
+  f.root.clearAuditAttention();
+  assert.deepStrictEqual(plain(f.root.pendingBySection.fonts), [mail]);
+  assert.deepStrictEqual(plain(f.root.hostWidget.reconciliationPending), [mail]);
+});
+
+test('clearing an audit updates font status without hiding other pending work', () => {
+  const audit = {app: 'Audited applications', action: 'review', reason: 'unresolved'};
+  const mail = {app: 'Betterbird', action: 'close', reason: 'close first'};
+  for (const other of [[], [mail]]) {
+    const f = fixture();
+    const result = {transaction: 't1', targetCount: 2, pendingApplications: [audit, ...other], terminalReload: {requested: [], failed: []}};
+    f.context.globalFontProcess.outputText = JSON.stringify(result);
+    f.context.globalFontProcess.resultExitCode = 0;
+    f.root.pendingBySection.fonts = result.pendingApplications;
+    f.root.fontActionNeedsAttention = true;
+    f.root.globalApplyStatus = 'Settings saved. Some applications need attention; see Applications.';
+    f.root.clearAuditAttention();
+    assert.equal(f.root.fontActionNeedsAttention, !!other.length);
+    assert(!f.root.fontActionStatus.includes('unresolved'));
+    assert.equal(f.root.sectionResults.fonts.state, other.length ? 'pending' : 'saved');
+    if (other.length) assert(f.root.fontActionStatus.includes('Betterbird'));
+    else assert.equal(f.root.globalApplyStatus, 'Settings saved.');
+  }
+});
+
+test('clearing audits removes only the old audit-blocked error', () => {
+  const f = fixture();
+  f.context.globalFontProcess.outputText = JSON.stringify({blocked: true, unsupportedManualCount: 1});
+  f.root.sectionResults.fonts = {state: 'error', detail: 'Font Apply stopped'};
+  f.root.globalApplyCurrentStep = 'fonts';
+  f.root.globalApplyStatus = 'Apply stopped at Fonts. Font Apply stopped';
+  f.root.applyFailed = true;
+  f.root.clearAuditAttention();
+  assert.equal(f.root.sectionResults.fonts.state, '');
+  assert.equal(f.root.applyFailed, false);
+  assert(f.root.globalApplyStatus.includes('Apply changes again'));
+});
+
+test('successful re-audit retains previous attention until reconciliation confirms it', () => {
+  const f = fixture(), p = f.context.manualAppProcess;
+  const audit = {app: 'Audited applications', action: 'review', reason: 'unresolved'};
+  const other = {app: 'Betterbird', action: 'close', reason: 'close first'};
+  let refreshes = 0;
+  f.root.pendingBySection = {fonts: [audit, other]};
+  f.root.hostWidget = {reconciliationPending: [audit, other], restartApplications: [],
+    auditRegistryChanged: () => refreshes++};
+  f.root.manualAppActionRunning = true;
+  Object.assign(p, {outputText: JSON.stringify({status: 'not-found', findings: []}),
+    stdoutFinished: true, stderrFinished: true, exitSeen: true, resultExitCode: 0});
+  f.root.finishManualAuditProcess(p, false);
+  assert.deepStrictEqual(plain(f.root.pendingBySection.fonts), [audit, other]);
+  assert.deepStrictEqual(plain(f.root.hostWidget.reconciliationPending), [audit, other]);
+  assert.equal(refreshes, 1);
+  assert.equal(f.root.manualAppStatus, 'No matching installed application was found. Try a different name.');
+});
+
+test('audit completion waits for exit and both streams in every order', () => {
+  for (const order of ['ose', 'oes', 'soe', 'seo', 'eos', 'eso']) {
+    for (const code of [0, 1]) {
+      const f = fixture(); const p = f.context.manualAuditClearProcess;
+      f.root.manualAppQuery = 'test input'; f.root.manualAuditClearRunning = true;
+      for (const [index, event] of Array.from(order).entries()) {
+        if (event === 'o') { p.outputText = '{"cleared":true}'; p.stdoutFinished = true; }
+        if (event === 's') p.stderrFinished = true;
+        if (event === 'e') { p.exitSeen = true; p.resultExitCode = code; }
+        f.root.finishManualAuditProcess(p, true);
+        if (index < 2) assert.equal(f.root.manualAppQuery, 'test input');
+      }
+      assert.equal(f.root.manualAppQuery, code ? 'test input' : '');
+      assert.equal(f.root.manualAppStatus, code ? 'Saved audits could not be cleared safely.' : 'Saved audits cleared.');
+      assert.equal(f.root.manualAuditClearRunning, false);
+    }
+  }
+  for (const code of [0, 1]) {
+    const f = fixture(), p = f.context.manualAppProcess;
+    Object.assign(p, {outputText: JSON.stringify({status: 'launcher-found', findings: [{fontStatus: 'registered'}]}),
+      stdoutFinished: true, stderrFinished: true, exitSeen: true, resultExitCode: code});
+    f.root.manualAppActionRunning = true;
+    f.root.finishManualAuditProcess(p, false);
+    assert.equal(f.root.manualAppStatus, code ? 'The app audit could not be completed.' : 'Shared font control detected. The rendered font has not been verified.');
+    assert.equal(f.root.manualAppActionRunning, false);
+  }
 });
 
 let failures = 0;

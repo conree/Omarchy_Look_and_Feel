@@ -28,6 +28,8 @@ import transaction as tx
 import terminal_reload
 import appearance_policy as policy
 import managed_preferences as preferences
+import app_font_actions, browser_font_actions
+import manual_app_registry
 
 
 def match(family, *, config=None):
@@ -73,7 +75,7 @@ with ExitStack() as stack:
     stack.enter_context(patch.object(controller, 'font_entries', return_value=[
         {'id': 'font:test-system', 'name': system}, {'id': 'font:test-terminal', 'name': chosen}]))
     stack.enter_context(patch.object(controller, 'installed_font_applications', return_value={'desktopApplications': []}))
-    stack.enter_context(patch.object(controller, 'validated_apply_status', return_value={'unsupportedCount': 0, 'registeredCount': 0}))
+    stack.enter_context(patch.object(controller, 'validated_apply_status', return_value={'unsupportedCount': 1, 'registeredCount': 0}))
     stack.enter_context(patch.object(controller, 'build_app_targets', return_value=({}, [])))
     stack.enter_context(patch.object(controller, 'build_browser_targets', return_value=({}, [])))
     stack.enter_context(patch.object(terminal_reload, 'reload_fonts', return_value={'requested': [], 'failed': []}))
@@ -81,15 +83,109 @@ with ExitStack() as stack:
     def apply(automatic=False):
         return controller.apply_global_fonts('font:test-system', 12, 'font:test-terminal', 12, automatic=automatic)
 
-    first = apply()['transaction']
+    result = apply()
+    first = result['transaction']
+    assert first and result['unsupportedManualCount'] == 1
+    assert any(row['app'] == 'Audited applications' for row in result['pendingApplications'])
     repaired = path.read_bytes()
     assert unrelated.encode() in repaired
     assert match(chosen) == chosen and match(other) == other and match(system) == system
     assert match(other + ',monospace') == other
     assert adapter.build(repaired.decode(), chosen).encode() == repaired
-    assert apply(automatic=True)['transaction'] is None
+    automatic = apply(automatic=True)
+    assert automatic['transaction'] is None and automatic['unsupportedManualCount'] == 1
     tx.rollback_latest(label=policy.LABEL_FONTS)
     assert path.read_bytes() == original and match(chosen) == other
+
+    # A bad app or unsupported terminal must not block shared settings or
+    # other apps. Actual font transaction and Undo still run in this HOME.
+    apps = [{'id': 'mystery.desktop', 'name': 'Mystery terminal', 'framework': 'terminal-emulator'},
+            {'id': 'typora.desktop'}, {'id': 'eu.betterbird.Betterbird.desktop'}, {'id': 'brave-browser.desktop'}]
+    def app_build(*args):
+        if 'typora.desktop' in args[-1]:
+            raise ValueError('unsafe Typora settings')
+        assert 'eu.betterbird.Betterbird.desktop' in args[-1]
+        return {}, [{'app': 'Betterbird', 'action': 'reopen', 'reason': 'test'}]
+    with patch.object(controller, 'installed_font_applications', return_value={'desktopApplications': apps}), \
+         patch.object(controller, 'build_app_targets', side_effect=app_build), \
+         patch.object(controller, 'build_browser_targets', side_effect=ValueError('bad browser preferences')):
+        isolated = apply()
+        assert isolated['transaction']
+        assert {item['app'] for item in isolated['pendingApplications']} >= {'Mystery terminal', 'Typora', 'Betterbird', 'Brave'}
+        assert match(chosen) == chosen
+        tx.rollback_latest(label=policy.LABEL_FONTS)
+        assert path.read_bytes() == original
+
+    css = Path.home() / tx.FILE_TARGETS['typora-base-user-css']
+    css.parent.mkdir(parents=True, exist_ok=True)
+    css.write_bytes(b'\xffbad css')
+    brave = Path.home() / tx.FILE_TARGETS['brave-default-preferences']
+    brave.parent.mkdir(parents=True, exist_ok=True)
+    brave.write_text('{}')
+    state = brave.parent.parent / 'Local State'
+    alacritty = Path.home() / tx.FILE_TARGETS['alacritty-config']
+    alacritty.parent.mkdir(parents=True, exist_ok=True)
+    alacritty.write_text('[font\n')
+    for malformed_state in ('[]', '{"profile":[]}'):
+        state.write_text(malformed_state)
+        actual_apps = [{'id': 'typora.desktop'}, {'id': 'brave-browser.desktop'},
+                       {'id': 'Alacritty.desktop', 'framework': 'terminal-emulator'},
+                       {'id': 'foot.desktop', 'framework': 'terminal-emulator'}]
+        with patch.object(controller, 'installed_font_applications', return_value={'desktopApplications': actual_apps}), \
+             patch.object(controller, 'build_app_targets', app_font_actions.build_app_targets), \
+             patch.object(controller, 'build_browser_targets', browser_font_actions.build):
+            isolated = apply()
+            assert isolated['transaction']
+            assert {item['app'] for item in isolated['pendingApplications']} >= {'Typora', 'Brave', 'Alacritty.desktop'}
+            assert css.read_bytes() == b'\xffbad css' and state.read_text() == malformed_state and alacritty.read_text() == '[font\n'
+            foot = Path.home() / tx.FILE_TARGETS['foot-config']
+            assert chosen in foot.read_text()
+            tx.rollback_latest(label=policy.LABEL_FONTS)
+            assert not foot.exists()
+
+    # Unsafe files are isolated before a batch is composed. A Ghostty overlay
+    # is inseparable from its config, and no skipped target may be touched.
+    ghostty = Path.home() / tx.FILE_TARGETS['ghostty-config']
+    overlay = Path.home() / tx.FILE_TARGETS['ghostty-font-overlay']
+    ghostty.parent.mkdir(parents=True, exist_ok=True)
+    ghostty.write_text('font-size = 11\n')
+    sentinel = Path.home() / 'overlay-sentinel'
+    sentinel.write_text('untouched')
+    overlay.symlink_to(sentinel)
+    css.write_text('body { color: red; }\n')
+    css.chmod(0o4600)
+    alacritty.write_bytes(b'#' + b'x' * tx.MAX_TARGET_BYTES)
+    unsafe_apps = [{'id': 'typora.desktop'},
+                   {'id': 'com.mitchellh.ghostty.desktop', 'framework': 'terminal-emulator'},
+                   {'id': 'Alacritty.desktop', 'framework': 'terminal-emulator'},
+                   {'id': 'foot.desktop', 'framework': 'terminal-emulator'}]
+    with patch.object(controller, 'installed_font_applications', return_value={'desktopApplications': unsafe_apps}), \
+         patch.object(controller, 'build_app_targets', app_font_actions.build_app_targets):
+        isolated = apply()
+        assert isolated['transaction']
+        assert {row['app'] for row in isolated['pendingApplications']} >= {'Typora', 'Alacritty.desktop', 'com.mitchellh.ghostty.desktop'}
+        assert ghostty.read_text() == 'font-size = 11\n' and overlay.is_symlink() and sentinel.read_text() == 'untouched'
+        assert css.stat().st_mode & 0o4000 and alacritty.stat().st_size == tx.MAX_TARGET_BYTES + 1
+        foot = Path.home() / tx.FILE_TARGETS['foot-config']
+        assert chosen in foot.read_text() and match(chosen) == chosen
+        tx.rollback_latest(label=policy.LABEL_FONTS)
+        assert not foot.exists() and overlay.is_symlink()
+    css.chmod(0o600)
+
+    # A malformed registry is retained for diagnosis and cannot block the
+    # real shared-font transaction or cause its counts to be reported as zero.
+    registry = Path(os.environ['XDG_STATE_HOME']) / 'omarchy-look-and-feel/manual-app-controls.json'
+    registry.parent.mkdir(parents=True, exist_ok=True)
+    registry.write_bytes(b'{invalid audit registry')
+    registry.chmod(0o600)
+    with patch.object(controller, 'validated_apply_status', manual_app_registry.validated_apply_status):
+        isolated = apply()
+        assert isolated['transaction']
+        assert isolated['registeredManualCount'] is None and isolated['unsupportedManualCount'] is None
+        assert any('could not be read safely' in row['reason'] for row in isolated['pendingApplications'])
+        assert registry.read_bytes() == b'{invalid audit registry' and match(chosen) == chosen
+        tx.rollback_latest(label=policy.LABEL_FONTS)
+        assert registry.read_bytes() == b'{invalid audit registry'
 
     # First use creates a removable target; unrelated existing XML is retained.
     path.unlink()

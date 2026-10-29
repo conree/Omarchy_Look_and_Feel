@@ -202,6 +202,44 @@ Panel {
     if (root.hostWidget) root.hostWidget.restartApplications = data.restartApplications
   }
 
+  function clearAuditAttention(recordsCleared) {
+    function keep(item) {
+      return !(item.app === "Audited applications" && item.action === "review")
+          && !(item.app === "Fonts" && item.action === "manual-audit")
+    }
+    var groups = Object.assign({}, root.pendingBySection)
+    Object.keys(groups).forEach(function(key) { groups[key] = (groups[key] || []).filter(keep) })
+    root.pendingBySection = groups
+    if (root.hostWidget)
+      root.hostWidget.reconciliationPending = (root.hostWidget.reconciliationPending || []).filter(keep)
+    try {
+      var previous = JSON.parse(globalFontProcess.outputText)
+      if (previous.blocked && previous.unsupportedManualCount > 0 && (root.sectionResults.fonts || {}).state === "error") {
+        root.fontActionStatus = recordsCleared ? "The audit records were cleared. Apply fonts again to save the selected settings."
+          : "The audit was updated. Apply fonts again to save the selected settings."
+        root.fontActionNeedsAttention = false
+        root.setSectionResult("fonts", "", "")
+        if (root.globalApplyCurrentStep === "fonts" && root.globalApplyStatus.indexOf("Apply stopped at Fonts.") === 0) {
+          root.globalApplyStatus = recordsCleared ? "The audit records were cleared. Apply changes again to save your selections."
+            : "The audit was updated. Apply changes again to save your selections."
+          root.applyFailed = false
+        }
+      }
+      if (Array.isArray(previous.pendingApplications) && previous.pendingApplications.some(function(item) { return !keep(item) })) {
+        previous.pendingApplications = previous.pendingApplications.filter(keep)
+        var updated = FontActionResult.evaluate(JSON.stringify(previous), globalFontProcess.errorText, globalFontProcess.resultExitCode)
+        if (updated.success) {
+          root.fontActionStatus = updated.message
+          root.fontActionNeedsAttention = !!updated.needsAction
+          root.setSectionResult("fonts", updated.needsAction ? "pending" : "saved", updated.message)
+        }
+      }
+    } catch (e) { /* No previous font result to update. */ }
+    if (root.globalApplyStatus === "Settings saved. Some applications need attention; see Applications."
+        && !root.fontActionNeedsAttention && !root.themeActionNeedsAttention && !root.opacityActionNeedsAttention)
+      root.globalApplyStatus = "Settings saved."
+  }
+
   function collectAttention() {
     var items = [], seen = ({})
     var pending = (root.pendingBySection.fonts || []).concat(root.pendingBySection.theme || [], root.pendingBySection.opacity || [])
@@ -231,10 +269,15 @@ Panel {
 
   function auditResultMessage(result) {
     if (result.status === "not-found")
-      return "Font support not detected. No matching installed application was found."
+      return "No matching installed application was found. Try a different name."
     var findings = Array.isArray(result.findings) ? result.findings : []
+    if (findings.length === 1 && findings[0].framework === "ambiguous or package-only result")
+      return result.status === "installed-item-found-no-launcher"
+        ? "An installed item was found, but its application font control could not be identified. Try a specific launcher."
+        : "Multiple applications matched. Search for a specific launcher to audit one application."
     return findings.length === 1 && findings[0].fontStatus === "registered"
-      ? "Font support detected" : "Font support not detected"
+      ? "Shared font control detected. The rendered font has not been verified."
+      : "No supported shared font control was identified. The rendered font has not been verified."
   }
 
   function runAppearanceAction(kind, args, fromGlobalApply) {
@@ -375,6 +418,7 @@ Panel {
     if (result.undoAvailable !== undefined) root.fontUndoAvailable = result.undoAvailable
     if (result.success) {
       root.updatePending("fonts", JSON.parse(globalFontProcess.outputText))
+      if (root.hostWidget && typeof root.hostWidget.sectionApplied === "function") root.hostWidget.sectionApplied("fonts")
     }
     root.setSectionResult("fonts", result.success ? (result.needsAction ? "pending" : "saved") : "error", result.message)
     if (result.refreshInventory) { root.refreshFontSelection = true; root.refreshInventory() }
@@ -457,7 +501,7 @@ Panel {
   }
 
   function inspectManualApp() {
-    if (root.manualAppActionRunning || root.fontActionRunning || root.appearanceActionRunning || root.globalApplyRunning || root.manualAppQuery.trim().length < 2) return
+    if (root.manualAppActionRunning || root.manualAuditClearRunning || root.fontActionRunning || root.appearanceActionRunning || root.globalApplyRunning || root.manualAppQuery.trim().length < 2) return
     manualAppStatus = "Auditing the entered app and checking verified shared font controls…"
     manualAppActionRunning = true
     manualAppProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "audit-app", root.manualAppQuery.trim()]
@@ -469,6 +513,35 @@ Panel {
     root.manualAuditClearRunning = true
     manualAuditClearProcess.command = ["/usr/bin/python3", "-B", localPath(Qt.resolvedUrl("controller.py")), "clear-manual-app-audit"]
     manualAuditClearProcess.running = true
+  }
+
+  function finishManualAuditProcess(process, clearing) {
+    if (process.handled || !process.exitSeen || !process.stdoutFinished || !process.stderrFinished) return
+    process.handled = true
+    if (process.resultExitCode !== 0) {
+      root.manualAppStatus = clearing ? "Saved audits could not be cleared safely." : "The app audit could not be completed."
+    } else {
+      try {
+        var result = JSON.parse(process.outputText)
+        if (clearing) {
+          if (result.cleared === true) {
+            root.manualAppQuery = ""
+            manualAppField.clear()
+            root.clearAuditAttention(true)
+            root.manualAppStatus = "Saved audits cleared."
+          } else root.manualAppStatus = "Saved audits could not be cleared."
+        } else {
+          root.manualAppStatus = root.auditResultMessage(result)
+        }
+      } catch (e) {
+        root.manualAppStatus = clearing ? "Saved audits could not be cleared." : "The app audit could not read its result."
+      }
+    }
+    if (clearing) root.manualAuditClearRunning = false
+    else root.manualAppActionRunning = false
+    // Even a failed command may have changed the registry before failing.
+    if (root.hostWidget && typeof root.hostWidget.auditRegistryChanged === "function")
+      root.hostWidget.auditRegistryChanged()
   }
 
   function catalogName(records, id) {
@@ -1211,7 +1284,7 @@ Panel {
               FieldLabel { Layout.fillWidth: true; text: "Audit Applications not Automatically Configured by the Plugin" }
               RowLayout {
                 Layout.fillWidth: true
-                SearchField { id: manualAppField; Layout.fillWidth: true; enabled: !root.busy; placeholderText: "App name, launcher, or package"; text: root.manualAppQuery; onTextEdited: root.manualAppQuery = text; onAccepted: root.inspectManualApp(); Accessible.name: "Application to audit" }
+                SearchField { id: manualAppField; Layout.fillWidth: true; enabled: !root.busy; placeholderText: "App name, launcher, or package"; text: root.manualAppQuery; onTextEdited: { root.manualAppQuery = text; root.manualAppStatus = "" } onAccepted: root.inspectManualApp(); Accessible.name: "Application to audit" }
                 ActionButton { text: root.manualAppActionRunning ? "Auditing…" : "Audit app"; enabled: !root.busy && root.manualAppQuery.trim().length >= 2; onClicked: root.inspectManualApp() }
               }
               Caption { Layout.fillWidth: true; visible: !!root.manualAppStatus; text: root.manualAppStatus; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
@@ -1321,7 +1394,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. Apply changes uses both selections; Undo fonts restores the previous plugin font transaction. Supported running terminals receive a reload request. Some applications need to be reopened; pending actions are listed in the result. Saving configuration does not verify every application's rendered fonts. An unresolved or unsupported manual audit registration blocks font Apply until it is resolved or cleared."
+              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. Apply changes uses both selections; Undo fonts restores the previous plugin font transaction. Supported running terminals receive a reload request. Some applications need to be reopened; pending actions are listed in the result. Saving configuration does not verify every application's rendered fonts. Unresolved audits do not block other font changes."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1401,7 +1474,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Enter an application name, launcher, or package and select Audit app. The audit searches installed launchers and packages, then saves its result. Font support detected means the app matches an existing shared GTK, Qt, or supported terminal font control. It does not apply fonts, add a new adapter, verify the rendered font, or register app-specific theme controls. Font support not detected means the app was not found, the result was ambiguous, or its font control is unsupported. Ambiguous or unsupported matches are saved and block Fonts Apply and automatic font repair; earlier steps in Apply changes may already have completed. A more specific audit does not remove an earlier ambiguous result. Clear Audits removes all saved manual audit records, including supported ones, without undoing settings or removing automatic support. A search with no match saves no new record."
+              text: "Enter an application name, launcher, or package and select Audit app. The audit searches installed launchers and packages, then saves its result. A shared font control match identifies an existing GTK, Qt, or supported terminal font control; it does not verify the rendered font, apply fonts, add a new adapter, or register app-specific theme controls. A search may find multiple applications, an installed item without an identifiable launcher, no match, or no supported shared control. Unresolved audits do not block changes to supported targets. A more specific audit does not remove an earlier ambiguous result. Clear Audits removes all saved manual audit records, including supported ones, without undoing settings or removing automatic support. A search with no match saves no new record."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1536,6 +1609,8 @@ Panel {
           root.opacityActionNeedsAttention = (result.pendingApplications || []).length > 0
           if ((result.pendingApplications || []).length) message += " " + result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join(" ")
         }
+        if ((kind === "theme" || kind === "opacity" || kind === "icons" || kind === "blur")
+            && root.hostWidget && typeof root.hostWidget.sectionApplied === "function") root.hostWidget.sectionApplied(kind)
         root.setSectionResult(kind, (kind === "theme" && root.themeActionNeedsAttention) || (kind === "opacity" && root.opacityActionNeedsAttention) ? "pending" : "saved", message)
         if (kind === "unlock") root.unlockSelectionChanged = false
         root.appearanceAuditStatus = ""
@@ -1638,34 +1713,22 @@ Panel {
 
   Process {
     id: manualAppProcess
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
-      try {
-        var result = JSON.parse(String(text || "{}"))
-        root.manualAppStatus = root.auditResultMessage(result)
-      } catch (e) {
-        root.manualAppStatus = "The app audit could not read its result."
-      }
-    } }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      if (String(text || "").trim()) root.manualAppStatus = "The app audit could not be completed."
-    } }
-    onRunningChanged: if (!running) root.manualAppActionRunning = false
+    property string outputText: ""; property string errorText: ""; property int resultExitCode: -1
+    property bool stdoutFinished: false; property bool stderrFinished: false; property bool exitSeen: false; property bool handled: false
+    onRunningChanged: if (running) { outputText = ""; errorText = ""; resultExitCode = -1; stdoutFinished = false; stderrFinished = false; exitSeen = false; handled = false }
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: { manualAppProcess.outputText = String(text || ""); manualAppProcess.stdoutFinished = true; root.finishManualAuditProcess(manualAppProcess, false) } }
+    stderr: StdioCollector { waitForEnd: true; onStreamFinished: { manualAppProcess.errorText = String(text || ""); manualAppProcess.stderrFinished = true; root.finishManualAuditProcess(manualAppProcess, false) } }
+    onExited: function(code) { resultExitCode = code; exitSeen = true; root.finishManualAuditProcess(manualAppProcess, false) }
   }
 
   Process {
     id: manualAuditClearProcess
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
-      try {
-        var result = JSON.parse(String(text || "{}"))
-        root.manualAppStatus = result.cleared ? "Saved audits cleared." : "Saved audits could not be cleared."
-      } catch (e) {
-        root.manualAppStatus = "Saved audits could not be cleared."
-      }
-    } }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      if (String(text || "").trim()) root.manualAppStatus = "Saved audits could not be cleared safely."
-    } }
-    onRunningChanged: if (!running) root.manualAuditClearRunning = false
+    property string outputText: ""; property string errorText: ""; property int resultExitCode: -1
+    property bool stdoutFinished: false; property bool stderrFinished: false; property bool exitSeen: false; property bool handled: false
+    onRunningChanged: if (running) { outputText = ""; errorText = ""; resultExitCode = -1; stdoutFinished = false; stderrFinished = false; exitSeen = false; handled = false }
+    stdout: StdioCollector { waitForEnd: true; onStreamFinished: { manualAuditClearProcess.outputText = String(text || ""); manualAuditClearProcess.stdoutFinished = true; root.finishManualAuditProcess(manualAuditClearProcess, true) } }
+    stderr: StdioCollector { waitForEnd: true; onStreamFinished: { manualAuditClearProcess.errorText = String(text || ""); manualAuditClearProcess.stderrFinished = true; root.finishManualAuditProcess(manualAuditClearProcess, true) } }
+    onExited: function(code) { resultExitCode = code; exitSeen = true; root.finishManualAuditProcess(manualAuditClearProcess, true) }
   }
 
   Process {

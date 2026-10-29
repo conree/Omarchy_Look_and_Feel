@@ -17,7 +17,7 @@ from font_application_inventory import TERMINALS, installed_font_applications, p
 from appearance_audit import audit_appearance
 from appearance_audit import _theme_mode_expected
 from appearance_actions import action_status, apply_action, rollback_action
-from global_font_actions import TERMINAL_COMMANDS, build_global_font_targets
+from global_font_actions import TERMINAL_COMMANDS, build_global_font_targets, _read as read_font_config
 from app_font_actions import build_app_targets
 from browser_font_actions import build as build_browser_targets
 from terminal_reload import reload_terminals
@@ -663,6 +663,23 @@ def ghostty_font_target(font_id: str, font_name: str, font_size: int = 12) -> di
     }
 
 
+def _preflight_font_targets(targets: dict[str, bytes], *, validate_content: bool = False) -> None:
+    """Check one optional application group before including it in a transaction.
+
+    The transaction still repeats its path, snapshot and unchanged checks;
+    these early checks do not authorize a write after a subsequent change.
+    """
+    import transaction as tx
+    from opacity_actions import _read_terminal
+    from managed_preferences import FIELDS, decode
+    for target, path in tx._target_paths(targets).items():
+        raw = _read_terminal(path)
+        if validate_content and target in FIELDS:
+            if path.exists():
+                decode(target, raw)
+            decode(target, targets[target])
+
+
 def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: str, terminal_size: int, *, automatic=False) -> dict[str, object]:
     fonts = {str(entry["id"]): str(entry["name"]) for entry in font_entries()}
     system_family = fonts.get(system_font_id)
@@ -672,27 +689,76 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
     census = installed_font_applications()
     terminal_apps = [app for app in census.get("desktopApplications", []) if isinstance(app, dict)
                      and str(app.get("framework", "")).casefold() == "terminal-emulator"]
-    terminal_ids = {str(app.get("id", "")) for app in terminal_apps}
-    for app_id in terminal_ids:
+    terminal_ids = set()
+    pending = []
+    for app in terminal_apps:
+        app_id = str(app.get("id", ""))
         adapter = TERMINAL_COMMANDS.get(app_id)
         if app_id not in TERMINALS or adapter is None:
-            raise TransactionError("an installed terminal needs a reviewed font adapter before global Apply")
-        if not shutil.which(adapter[0]):
-            raise TransactionError("an installed terminal could not be matched to its font adapter executable")
-    targets, terminal_count = build_global_font_targets(system_family, system_size, terminal_family, terminal_size, terminal_ids)
+            pending.append({"app": str(app.get("name") or app_id or "Terminal"), "action": "review", "reason": "No supported terminal font control was detected; this terminal was skipped."})
+        elif not shutil.which(adapter[0]):
+            pending.append({"app": str(app.get("name") or app_id or "Terminal"), "action": "review", "reason": "The terminal executable could not be found; its font settings were skipped."})
+        else:
+            terminal_ids.add(app_id)
+    targets, _ = build_global_font_targets(system_family, system_size, terminal_family, terminal_size, set())
+    terminal_targets = set()
+    for app_id in sorted(terminal_ids):
+        target_id = TERMINAL_COMMANDS[app_id][1]
+        if target_id in terminal_targets:
+            continue
+        try:
+            group = {target_id: b''}
+            if target_id == "ghostty-config":
+                group['ghostty-font-overlay'] = b''
+            _preflight_font_targets(group)
+            terminal_settings, _ = build_global_font_targets(system_family, system_size, terminal_family, terminal_size, {app_id})
+            group = {target_id: terminal_settings[target_id]}
+            if target_id == "ghostty-config":
+                group["ghostty-font-overlay"] = terminal_settings["ghostty-font-overlay"]
+            _preflight_font_targets(group, validate_content=True)
+            targets.update(group)
+            terminal_targets.add(target_id)
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+            pending.append({"app": app_id, "action": "review", "reason": "Its terminal font settings could not be safely read or updated; they were skipped."})
+    terminal_count = len(terminal_targets)
     desktop_ids = {str(app.get("id", "")) for app in census.get("desktopApplications", []) if isinstance(app, dict)}
-    app_targets, pending = build_app_targets(system_family, system_size, terminal_family, terminal_size, desktop_ids)
-    targets.update(app_targets)
-    browser_targets, browser_pending = build_browser_targets(system_family, system_size, terminal_family, terminal_size, desktop_ids)
-    targets.update(browser_targets)
-    pending.extend(browser_pending)
-    manual = validated_apply_status(set(targets))
+    app_groups = [("Typora", {item for item in desktop_ids if "typora" in item.casefold()}),
+                  ("Betterbird", desktop_ids & {"eu.betterbird.Betterbird.desktop"})]
+    for name, ids in app_groups:
+        if not ids:
+            continue
+        try:
+            app_target_id = 'typora-base-user-css' if name == 'Typora' else 'betterbird-prefs'
+            if app_target_id in FILE_TARGETS:
+                _preflight_font_targets({app_target_id: b''})
+            app_targets, app_pending = build_app_targets(system_family, system_size, terminal_family, terminal_size, ids)
+            if app_targets:
+                _preflight_font_targets(app_targets, validate_content=True)
+            targets.update(app_targets)
+            pending.extend(app_pending)
+        except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+            pending.append({"app": name, "action": "review", "reason": "Its font settings could not be safely read or updated; they were skipped."})
+    try:
+        if 'brave-browser.desktop' in desktop_ids:
+            _preflight_font_targets({'brave-default-preferences': b''})
+        browser_targets, browser_pending = build_browser_targets(system_family, system_size, terminal_family, terminal_size, desktop_ids)
+        if browser_targets:
+            _preflight_font_targets(browser_targets, validate_content=True)
+        targets.update(browser_targets)
+        pending.extend(browser_pending)
+    except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
+        pending.append({"app": "Brave", "action": "review", "reason": "Its font settings could not be safely read or updated; they were skipped."})
+    try:
+        manual = validated_apply_status(set(targets))
+    except (OSError, RuntimeError, ValueError):
+        # A damaged audit registry is unrelated to the writable font targets.
+        # Preserve it for review and report that its counts are unknown.
+        manual = {"registeredCount": None, "unsupportedCount": None}
+        pending.append({"app": "Audited applications", "action": "review",
+                        "reason": "Saved audit records could not be read safely; their font support is unknown. Font changes still apply to supported targets."})
     if manual["unsupportedCount"]:
-        return {
-            "blocked": True,
-            "unsupportedManualCount": manual["unsupportedCount"],
-            "registeredManualCount": manual["registeredCount"],
-        }
+        pending.append({"app": "Audited applications", "action": "review",
+                        "reason": "Some saved audits have unresolved font support. Font changes still apply to supported targets; the affected applications may not follow them."})
     import appearance_policy as policy
     import desktop_fonts
     values = {"font-name": f"{system_family} {system_size}",
@@ -711,7 +777,7 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         if desktop_changed and not targets:
             # A stable harmless target lets the existing journal carry a
             # GSettings-only repair without creating a new settings subsystem.
-            targets["global-font-selection"] = (HOME / FILE_TARGETS["global-font-selection"]).read_bytes()
+            targets["global-font-selection"] = read_font_config(HOME / FILE_TARGETS["global-font-selection"]).encode('utf-8')
     else:
         desktop_changed = True
         targets["appearance-policy"] = policy.update("fonts", {"systemId": system_font_id, "systemSize": system_size,
@@ -729,7 +795,8 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
     from terminal_preferences import FONT_FIELDS
     ownership.update(FONT_FIELDS)
     css_path = HOME / FILE_TARGETS['typora-base-user-css']
-    if css_path.is_file() and '/* Look & Feel font profile: preserve theme styling while sharing font roles. */' in css_path.read_text():
+    if ('typora-base-user-css' in targets and
+            '/* Look & Feel font profile: preserve theme styling while sharing font roles. */' in read_font_config(css_path, allow_missing=True)):
         ownership['typora-base-user-css'].add('body')
     transaction_id = apply_file_targets(targets, label="Automatic font reconciliation" if automatic else policy.LABEL_FONTS,
                                         desktop_font_values=values if desktop_changed else None,
@@ -746,7 +813,7 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         "targetCount": len(targets),
         "terminalCount": terminal_count,
         "registeredManualCount": manual["registeredCount"],
-        "unsupportedManualCount": 0,
+        "unsupportedManualCount": manual["unsupportedCount"],
     }
 
 
@@ -767,7 +834,7 @@ def main(argv: list[str]) -> int:
         return _main(argv)
     import appearance_policy
     try:
-        with appearance_policy.operation_lock():
+        with appearance_policy.operation_lock(timeout=0 if argv == ["reconcile"] else 10):
             from managed_preferences import AUTOMATIC
             token = AUTOMATIC.set(argv == ["reconcile"])
             try:
@@ -791,11 +858,6 @@ def main(argv: list[str]) -> int:
                     requirements.require('theme')
                 elif argv == ["rollback-appearance", "background"]:
                     requirements.require('background')
-                elif argv == ["reconcile"]:
-                    saved = appearance_policy.read()
-                    for area in ('theme', 'fonts', 'icons', 'opacity', 'blur'):
-                        if saved.get(area) is not None:
-                            requirements.require(area)
                 import application_restarts
                 application_restarts.observe()
                 recover_pending()
