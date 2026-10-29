@@ -540,6 +540,10 @@ def inventory() -> dict[str, object]:
     status["unlock"].update(boot_unlock.status())
     import icon_actions
     status["icons"] = icon_actions.status()
+    import opacity_actions
+    status["opacity"] = opacity_actions.status()
+    import blur_actions
+    status["blur"] = blur_actions.status()
     saved_theme = appearance_policy.latest(appearance_policy.LABEL_THEME)
     if any(row[2].get("label") == appearance_policy.LABEL_THEME for row in appearance_policy.records()):
         status["theme"]["undoAvailable"] = saved_theme is not None
@@ -722,6 +726,8 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         'qt6ct-settings': {'Fonts/general', 'Fonts/fixed'},
         'typora-base-user-css': {'fonts'},
     }
+    from terminal_preferences import FONT_FIELDS
+    ownership.update(FONT_FIELDS)
     css_path = HOME / FILE_TARGETS['typora-base-user-css']
     if css_path.is_file() and '/* Look & Feel font profile: preserve theme styling while sharing font roles. */' in css_path.read_text():
         ownership['typora-base-user-css'].add('body')
@@ -756,7 +762,7 @@ def write_action_result(result):
 
 
 def main(argv: list[str]) -> int:
-    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile"}
+    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-opacity", "apply-blur", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile"}
     if not mutation:
         return _main(argv)
     import appearance_policy
@@ -770,6 +776,8 @@ def main(argv: list[str]) -> int:
                     requirements.require('fonts')
                 elif argv[0] == "apply-theme":
                     requirements.require('theme')
+                elif argv[0] == "apply-opacity" or argv == ["rollback-appearance", "opacity"]:
+                    requirements.require('opacity')
                 elif argv[:2] == ["apply-catalog-action", "icons"]:
                     requirements.require('icons')
                 elif argv[:2] == ["apply-catalog-action", "background"]:
@@ -785,8 +793,8 @@ def main(argv: list[str]) -> int:
                     requirements.require('background')
                 elif argv == ["reconcile"]:
                     saved = appearance_policy.read()
-                    for area in ('theme', 'fonts', 'icons'):
-                        if saved.get(area):
+                    for area in ('theme', 'fonts', 'icons', 'opacity', 'blur'):
+                        if saved.get(area) is not None:
                             requirements.require(area)
                 import application_restarts
                 application_restarts.observe()
@@ -824,6 +832,18 @@ def _main(argv: list[str]) -> int:
         import appearance_policy
         json.dump(appearance_policy.reconcile(), sys.stdout, ensure_ascii=False, sort_keys=True)
         sys.stdout.write("\n")
+        return 0
+
+    if len(argv) == 2 and argv[0] == 'apply-opacity':
+        from opacity_actions import apply as apply_opacity
+        write_action_result(apply_opacity(int(argv[1])))
+        return 0
+
+    if len(argv) == 2 and argv[0] == 'apply-blur':
+        from blur_actions import apply as apply_blur
+        if argv[1] not in {'on', 'off'}:
+            raise ValueError('Terminal blur must be On or Off')
+        write_action_result(apply_blur(argv[1] == 'on'))
         return 0
 
     if len(argv) == 5 and argv[0] == "apply-global-fonts":
@@ -877,6 +897,12 @@ def _main(argv: list[str]) -> int:
                 result = boot_unlock.undo()
             elif argv[1] == "icons":
                 from icon_actions import undo
+                result = undo()
+            elif argv[1] == "opacity":
+                from opacity_actions import undo
+                result = undo()
+            elif argv[1] == "blur":
+                from blur_actions import undo
                 result = undo()
             else:
                 result = rollback_action(argv[1])
@@ -965,7 +991,8 @@ def _main(argv: list[str]) -> int:
             if entry is None:
                 raise TransactionError("selected font is no longer in the current catalog")
             font_size = int(argv[2])
-            transaction_id = apply_file_targets(ghostty_font_target(str(entry["id"]), str(entry["name"]), font_size), label="Ghostty font")
+            transaction_id = apply_file_targets(ghostty_font_target(str(entry["id"]), str(entry["name"]), font_size), label="Ghostty font",
+                                                owned_fields={'ghostty-config': {'font-import'}})
         except (TransactionError, ValueError) as exc:
             print(f"Ghostty font Apply failed: {exc}", file=sys.stderr)
             return 1

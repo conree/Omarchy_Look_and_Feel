@@ -109,18 +109,17 @@ assert journal(parent)['state'] == 'rolled_back' and journal(child)['state'] == 
 assert parent in tx.recover_pending()
 assert journal(child)['state'] == 'rolled_back' and journal(parent)['groupUndoPending'] is False
 
-# Ordinary unreviewed fields must not be reverted during grouped Undo.
+# Field-aware terminal Undo restores fonts while preserving external opacity.
 put('kitty-config', b'font_family Old\nbackground_opacity .5\n')
 parent = apply({'kitty-config': b'font_family New\nbackground_opacity .5\n'}, 'plain-drift')
 put('kitty-config', b'font_family Drift\nbackground_opacity .8\n')
 apply({'kitty-config': b'font_family New\nbackground_opacity .8\n'}, 'auto-plain', parent)
-try:
-    tx.rollback_latest(label='plain-drift')
-except tx.TransactionError as exc:
-    assert 'preserving' in str(exc)
-else:
-    raise AssertionError('unowned ordinary-file drift was discarded')
+with path('kitty-config').open('ab') as stream:
+    stream.write(b'scrollback_lines 2000\n')
+tx.rollback_latest(label='plain-drift')
+assert b'font_family Old' in path('kitty-config').read_bytes()
 assert b'background_opacity .8' in path('kitty-config').read_bytes()
+assert b'scrollback_lines 2000' in path('kitty-config').read_bytes()
 
 # CSS syntax/layout preservation and idempotence, including nested functions,
 # quoted semicolons, @font-face, and the plugin's separately owned font block.
@@ -148,6 +147,9 @@ qt_colors = themes.qt_palette(colors).decode().splitlines()[1].split('=', 1)[1].
 assert len(qt_colors) == 21 and qt_colors[20] != qt_colors[9]
 gtk = themes.gtk_stylesheet(css.replace('@media screen', '@binding-set unused'), colors)
 assert gtk == themes.gtk_stylesheet(gtk.decode(), colors)
+solid = next(line.split('{', 1)[0] for line in gtk.decode().splitlines()
+             if 'window.background' in line and 'background-color:' in line)
+assert all(selector.strip().startswith('window.background') for selector in solid.split(','))
 assert 'dracula' not in themes.typora_stylesheet(colors).decode().lower()
 
 # Browser flags remove only an actual theme extension; no other extension or

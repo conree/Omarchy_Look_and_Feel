@@ -1,4 +1,76 @@
-# Release validation — updated 2026-10-28
+# Release validation — updated 2026-10-29
+
+## Live transparency correction — October 29
+
+The initial checks below missed the essential visible behavior: the plugin's
+global GTK palette painted `window`, `stack` and `scrolledwindow` opaque behind
+Ghostty. Native A/B desktop captures reproduced the failure at 0%. Restricting
+solid palette surfaces to `window.background` fixes newly started Ghostty
+processes. Existing GTK processes retain the old user stylesheet, so the opacity
+adapter also owns a reloadable Ghostty custom stylesheet that clears those
+surfaces while the window lacks its opaque-background class. SIGUSR2 loads this
+correction without closing sessions. Explicit prompt/application cell backgrounds
+remain opaque (`background-opacity-cells = false`).
+
+Actual production opacity actions were tested at 0%, 50% and 100% in the original
+running Ghostty PID 1282224. Desktop captures show visible wallpaper, an intermediate
+blend, and an opaque background respectively. More than 5,000 sampled Starship
+prompt background pixels retain exactly the same RGB values across all three.
+The test actions were undone, restoring the selected 0% policy and all seven
+recorded terminal/configuration/CSS hashes; both original sessions remained open.
+An independent reviewer checked scripts, source, screenshots, window metadata,
+pixel comparisons and exact restored hashes. Fresh-process A/B captures also
+include Wayland opaque-region logs. Evidence is private under
+`Testing/Opacity_2026-10-29/live-correction/`.
+
+Focused opacity, portable-appearance and 23-case panel regressions pass. An added
+regression verifies that Undo refreshes Ghostty even when only the helper CSS
+changes. Independent retesting of that edge passes. The earlier 28-program sweep
+below predates this correction; it is not claimed as a fresh broad sweep of the
+corrected build. Other terminals retain their native background-opacity behavior;
+this live capture sequence specifically covers Ghostty on the owner's desktop.
+
+## Initial terminal opacity dropdown checks — October 29
+
+The Appearance tab adds a separate Terminal opacity dropdown below Light/Dark
+theme choices. It offers Keep current settings or 0–100% in 5% steps and explains
+that 70% opacity means 30% transparency. The default leaves current terminal
+settings alone. The shared Apply sequence inserts a selected opacity after
+Theme, with separate saved policy, automatic repair and Undo. Native background
+settings cover installed Ghostty, Alacritty, Kitty, Foot and WezTerm. Ghostty
+keeps explicitly coloured prompt and application cells opaque; blur is preserved.
+
+Twenty-eight isolated test programs passed in the final broad sweep. The
+unchanged native Gecko lock test was excluded because host process/lock
+interoperability is outside this feature; its earlier coverage remains below.
+The new opacity regression covers all five adapters, four Apply/Undo orders,
+first-use Fonts/Opacity ownership, unrelated edits, no-op original baselines,
+drift repair, terminals added after Apply, 0/100% endpoints, reload retries,
+process restart notices and malformed auxiliary-cache recovery. Native Ghostty
+and Foot validation, Alacritty's configuration migration parser, and synthetic
+WezTerm execution in real Lua passed. The production panel interaction suite
+now has 23 cases, including opacity draft preservation, CLI routing, 0%, failure
+ordering, independent Undo and truthful pending status.
+
+Independent review reran focused production regressions, probed codec/ownership
+edges, inspected actual user-config plans without writing them, and rendered
+the production QML controls offscreen at 0% and 70%, with an open dropdown and
+zero Qt warnings. Rendering used sample inventory and a substituted shell
+wrapper. Live terminal appearance, physical GPU compositing, and every custom
+config syntax were not tested. Files with unsupported layouts are refused;
+merged Undo may retain harmless empty section headers. Foot/Kitty reopen notices
+track process identity rather than proving window appearance.
+
+This local revision follows the October 28 archive below. Private final sweep
+logs, source hashes and panel captures are under `Testing/Opacity_2026-10-29/`.
+
+Following owner sizing feedback, the opacity control was narrowed to a left-aligned maximum
+of 240 logical pixels. Independent native checks at 840- and 480-pixel panel
+widths measured a 240-pixel control and popup, with the full default label visible
+and no Qt warnings. The 23-case panel interaction suite still passes. This later
+layout-only change leaves backend files unchanged; its QML hash, captures and
+geometry are recorded separately in `Testing/Opacity_2026-10-29/compact-layout/`.
+The original broad-sweep manifest above identifies the preceding layout.
 
 This is a tested development candidate for the documented Omarchy baseline,
 not a claim that every Linux application or hardware configuration is supported.

@@ -20,10 +20,11 @@ AUTOMATIC = ContextVar("automatic_appearance_operation", default=False)
 FIELDS = {
     'fontconfig-monospace': {'monospace-rule'},
     "hypr-qt-integration": {"integration"},
-    'wezterm-config': {'fonts', 'theme'},
+    'wezterm-config': {'fonts', 'theme', 'opacity'},
     'typora-base-user-css': {'body', 'fonts'},
     'typora-profile': {'theme', 'darkTheme', 'useSeparateDarkTheme'},
-    'appearance-policy': {'fonts', 'theme', 'background', 'icons'},
+    'appearance-policy': {'fonts', 'theme', 'background', 'icons', 'opacity', 'blur'},
+    'terminal-blur-config': {'blur'},
 }
 INI_FIELDS = {
     'wezterm-config': {'fonts', 'theme'},
@@ -34,6 +35,10 @@ INI_FIELDS = {
     'qt6ct-settings': {'Fonts/general', 'Fonts/fixed', 'Appearance/custom_palette', 'Appearance/color_scheme_path', 'Appearance/icon_theme'},
 }
 FIELDS.update(INI_FIELDS)
+# WezTerm has its own Lua block codec rather than an INI codec.
+FIELDS['wezterm-config'] = {'fonts', 'theme', 'opacity'}
+from terminal_preferences import FIELDS as TERMINAL_FIELDS
+FIELDS.update(TERMINAL_FIELDS)
 
 
 def _ini_decode(target, raw):
@@ -84,8 +89,14 @@ def _unique(pairs):
 
 
 def decode(target, raw):
+    if target == 'terminal-blur-config':
+        from blur_actions import decode as decode_blur
+        return decode_blur(raw)
     if target not in FIELDS:
         raise ValueError('unknown preference codec')
+    if target in TERMINAL_FIELDS:
+        from terminal_preferences import decode as terminal_decode
+        return terminal_decode(target, raw)
     if target == 'fontconfig-monospace':
         from fontconfig_policy import decode as decode_fontconfig
         return decode_fontconfig(raw.decode('utf-8'))
@@ -122,6 +133,12 @@ def decode(target, raw):
 
 
 def encode(target, data):
+    if target == 'terminal-blur-config':
+        from blur_actions import encode as encode_blur
+        return encode_blur(data)
+    if target in TERMINAL_FIELDS:
+        from terminal_preferences import encode as terminal_encode
+        return terminal_encode(target, data)
     if target == 'fontconfig-monospace':
         from fontconfig_policy import encode as encode_fontconfig
         return encode_fontconfig(data).encode('utf-8')
@@ -157,10 +174,21 @@ def edits(target, before, after, *, owned_fields=None):
         return {'monospace-rule': {'before': [old['monospace-rule']] if 'monospace-rule' in old else [],
                                   'after': [new['monospace-rule']]}}
     # Wrapped values distinguish an absent field from a JSON null.
+    owner = FIELDS[target] if owned_fields is None else owned_fields
     changes = {key: {'before': [old[key]] if key in old else [],
                      'after': [new[key]] if key in new else []}
-               for key in sorted(FIELDS[target])
+               for key in sorted(owner)
                if (key in old, old.get(key)) != (key in new, new.get(key))}
+    if target == 'terminal-blur-config':
+        changes.setdefault('blur', {'before': [old['blur']] if 'blur' in old else [],
+                                    'after': [new['blur']]})
+    from terminal_preferences import OPACITY_FIELDS
+    # Preserve the first Apply's baseline even if opacity was already correct.
+    # Automatic repair must belong to that baseline, never to intervening drift.
+    if target in OPACITY_FIELDS and owner <= OPACITY_FIELDS[target]:
+        for key in owner:
+            changes.setdefault(key, {'before': [old[key]] if key in old else [],
+                                     'after': [new[key]] if key in new else []})
     if target in {'qt5ct-settings', 'qt6ct-settings'}:
         # Fonts Apply owns its initial baseline even if it was already equal.
         # Palette/icon operations must not acquire ownership of those fonts.

@@ -17,7 +17,7 @@ GTK_KEYS = ('gtk-font-name', 'gtk-theme-name', 'gtk-application-prefer-dark-them
 DESKTOP_KEYS = ('font-name', 'text-scaling-factor', 'icon-theme')
 
 
-def processes():
+def processes(name='pcmanfm'):
     """PID reuse and reboot must not retain an old instance's notice."""
     boot = (PROC / 'sys/kernel/random/boot_id').read_text().strip()
     found = set()
@@ -28,7 +28,7 @@ def processes():
             if path.stat().st_uid != os.geteuid():
                 continue
             # comm is matched exactly: PCManFM-Qt has a different integration.
-            if (path / 'comm').read_text().strip() != 'pcmanfm':
+            if (path / 'comm').read_text().strip() != name:
                 continue
             fields = (path / 'stat').read_text().rsplit(')', 1)[1].split()
             if fields[0] in ('Z', 'X'):

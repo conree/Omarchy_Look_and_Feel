@@ -13,6 +13,15 @@ and supported behavior; [PROJECT_STATUS.md](PROJECT_STATUS.md) records acceptanc
 The design brief contains owner requirements and explicitly dated history.
 Handoffs record operational continuity and are not design authority.
 
+The October 29 local opacity change adds `opacity_actions.py` and
+`terminal_preferences.py`, integrated with the existing policy, transaction and
+panel source. It follows the archived October 28 candidate; the older archive
+hashes below do not identify this revision. See RELEASE_VALIDATION.md for checks.
+The subsequent live correction updates `application_themes.py` and adds the
+transaction-owned Ghostty opacity stylesheet/import, preserving opaque prompt
+cells and repairing running sessions. Its desktop evidence is separately scoped
+in the validation report.
+
 The October 28 source adds a save-work reminder and PCManFM restart observations
 in `application_restarts.py`, delivered through controller results and periodic
 reconciliation. This revision follows the VM archive below. Its isolated tests

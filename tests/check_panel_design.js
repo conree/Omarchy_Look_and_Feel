@@ -44,7 +44,7 @@ function inventory() {
 }
 
 const draftKeys = ['selectedSystemFontId', 'selectedTerminalFontId', 'selectedSystemSize',
-  'selectedTerminalSize', 'selectedThemeMode', 'selectedLightThemeId', 'selectedDarkThemeId',
+  'selectedTerminalSize', 'selectedThemeMode', 'selectedOpacity', 'selectedLightThemeId', 'selectedDarkThemeId',
   'selectedBackgroundId', 'selectedIconId', 'selectedUnlockId', 'selectedUnlockPreview',
   'unlockSelectionChanged', 'onlyMonospacedTerminalFonts'];
 function draft(root) { return Object.fromEntries(draftKeys.map(key => [key, root[key]])); }
@@ -63,7 +63,7 @@ function fixture({loaded = true} = {}) {
     globalApplySteps: [], globalApplyStepIndex: 0, globalApplyCurrentStep: '',
     popupForeground: '#eeeeee', popupBackground: '#111111', activeTab: 0,
     sectionResults: {}, pendingBySection: {fonts: [], theme: []}, inventoryError: '',
-    refreshFontSelection: false, applicationRecords: [], applicationSearch: '', hostWidget: null};
+    refreshFontSelection: false, hostWidget: null};
   function color(value) {
     if (typeof value === 'object') return value;
     assert(/^#[0-9a-f]{6}$/i.test(value), 'Color fixture only accepts six-digit hex');
@@ -139,7 +139,7 @@ function fixture({loaded = true} = {}) {
 
 function actionSteps(f) {
   return f.commands.filter(row => row.command[3] && row.command[3].startsWith('apply-')).map(row =>
-    row.command[3] === 'apply-global-fonts' ? 'fonts' : row.command[3] === 'apply-theme' ? 'theme' : row.command[4]);
+    row.command[3] === 'apply-global-fonts' ? 'fonts' : row.command[3] === 'apply-theme' ? 'theme' : row.command[3] === 'apply-opacity' ? 'opacity' : row.command[4]);
 }
 function footerSummary(f) {
   const start = panel.indexOf('objectName: "panelFooter"');
@@ -159,6 +159,61 @@ function finishAll(f, {fontResult, themeResult} = {}) {
 
 const tests = [];
 function test(name, body) { tests.push([name, body]); }
+
+test('blur follows opacity independently, preserves Off drafts and supports Undo', () => {
+  const f = fixture(); f.root.selectedOpacity = 70; f.root.selectedBlur = 'off';
+  f.root.applyAllSelectedSettings();
+  f.appearance({state: 'committed', readback: 'Light'});
+  f.appearance({state: 'committed', readback: '70%', opacityPercent: 70});
+  assert.equal(f.root.globalApplyCurrentStep, 'blur');
+  assert.deepStrictEqual(f.commands.at(-1).command.slice(3), ['apply-blur','off']);
+  f.appearance({state: 'committed', readback: 'Off', blurEnabled: false});
+  assert.equal(f.root.selectedOpacity, 70);
+  finishAll(f);
+  const fresh=inventory(); fresh.desiredAppearance.blur=true;
+  f.root.adoptInventory(JSON.stringify(fresh));
+  assert.equal(f.root.selectedBlur,'off');
+  f.root.undoAppearanceAction('blur');
+  f.appearance({rolledBack:'blur-test', savedBlur:null});
+  assert.equal(f.root.selectedBlur,'keep');
+  assert.equal(f.root.selectedOpacity,70);
+});
+
+test('opacity is independent, keeps drafts, reports pending work and supports Undo', () => {
+  const f = fixture();
+  assert.equal(f.root.selectedOpacity, -1);
+  f.root.selectedOpacity = 70;
+  f.root.applyAllSelectedSettings();
+  f.appearance({state: 'committed', readback: 'Light'});
+  assert.equal(f.root.globalApplyCurrentStep, 'opacity');
+  assert.deepStrictEqual(f.commands.at(-1).command.slice(3), ['apply-opacity', '70']);
+  f.appearance({state: 'committed', readback: '70%', opacityPercent: 70,
+    pendingApplications: [{app: 'Foot', action: 'reopen', reason: 'Open a new window.'}]});
+  finishAll(f);
+  assert.deepStrictEqual(actionSteps(f), ['theme', 'opacity', 'fonts', 'background', 'icons']);
+  assert.equal(f.root.sectionResults.opacity.state, 'pending');
+  assert.match(f.root.globalApplyStatus, /attention/);
+  f.root.selectedOpacity = 85;
+  const fresh = inventory(); fresh.desiredAppearance.opacity = 70;
+  f.root.adoptInventory(JSON.stringify(fresh));
+  assert.equal(f.root.selectedOpacity, 85);
+  f.root.undoAppearanceAction('opacity');
+  f.appearance({rolledBack: 'opacity-test', savedPercent: null});
+  assert.equal(f.root.selectedOpacity, -1);
+  assert(!f.root.opacityActionNeedsAttention);
+});
+
+test('zero opacity can be applied and failed opacity stops later steps', () => {
+  const f = fixture(); f.root.selectedOpacity = 0;
+  f.root.applyAllSelectedSettings();
+  f.appearance({state: 'committed', readback: 'Light'});
+  assert.equal(f.root.globalApplyCurrentStep, 'opacity');
+  assert.equal(f.commands.at(-1).command.at(-1), '0');
+  f.appearance({}, 1);
+  assert(!f.root.globalApplyRunning);
+  assert.equal(f.root.selectedOpacity, 0);
+  assert.deepStrictEqual(actionSteps(f), ['theme', 'opacity']);
+});
 
 test('cached examples display before discovery without authorizing Apply or Undo', () => {
   const f = fixture({loaded: false});
@@ -329,20 +384,6 @@ test('attention merges reconciliation results and clears resolved section pendin
   assert.equal(attention.length, 1); assert.equal(attention[0].app, 'Appearance check');
 });
 
-test('application search filters actual inventory records without changing font drafts', () => {
-  const f = fixture(), data = inventory();
-  data.font_application_inventory = {desktopApplications: [
-    {id: 'b.desktop', name: 'Beta', framework: 'Qt', launchable: true},
-    {id: 'a.desktop', name: 'Alpha', framework: 'GTK', launchable: true},
-    {id: 'hidden.desktop', name: 'Hidden', framework: 'GTK', hidden: true},
-    {id: 'no.desktop', name: 'No launcher', framework: 'Qt', launchable: false}]};
-  const before = draft(f.root); f.root.adoptInventory(JSON.stringify(data));
-  assert.deepStrictEqual(plain(f.root.filteredApplications().map(item => item.name)), ['Alpha', 'Beta']);
-  f.root.applicationSearch = '  qT '; assert.deepStrictEqual(plain(f.root.filteredApplications().map(item => item.id)), ['b.desktop']);
-  f.root.applicationSearch = 'a.desktop'; assert.deepStrictEqual(plain(f.root.filteredApplications().map(item => item.name)), ['Alpha']);
-  assert.deepStrictEqual(draft(f.root), before);
-});
-
 test('PCManFM restart notices follow current observation without stale section entries', () => {
   const f = fixture();
   const notice = {app: 'PCManFM', action: 'reopen', reason: 'Fully quit and reopen PCManFM.'};
@@ -446,6 +487,13 @@ test('global Apply includes explicitly changed boot artwork last', () => {
   f.root.applyAllSelectedSettings(); f.flush(); finishAll(f);
   assert.deepStrictEqual(actionSteps(f), ['theme', 'fonts', 'background', 'icons', 'unlock']);
   assert.equal(f.root.unlockSelectionChanged, false);
+});
+
+test('audit message describes the current finding, not cumulative registrations', () => {
+  const f = fixture();
+  assert.equal(f.root.auditResultMessage({status: 'launcher-found', findings: [{fontStatus: 'registered'}], unsupportedCount: 1}), 'Font support detected');
+  assert.equal(f.root.auditResultMessage({status: 'launcher-found', findings: [{fontStatus: 'unsupported'}], registeredCount: 1}), 'Font support not detected');
+  assert.equal(f.root.auditResultMessage({status: 'not-found', findings: []}), 'Font support not detected. No matching installed application was found.');
 });
 
 let failures = 0;

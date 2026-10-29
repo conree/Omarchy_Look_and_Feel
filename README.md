@@ -1,13 +1,13 @@
 # Omarchy Look & Feel
 
 One panel to make supported GTK, Qt and terminal apps follow your Omarchy theme.
-Choose fonts, light/dark themes, backgrounds and icons, then press **Apply changes**.
+Choose fonts, light/dark themes, terminal opacity and blur, backgrounds and icons, then press **Apply changes**.
 Changes are journalled, with separate **Undo** controls for each section.
 
 Version **0.2.0** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
 > **Automatic repair:** after you apply a choice, the loaded plugin checks saved
-> themes, fonts and icons on startup and every **15 seconds**, in all modes and
+> themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and
 > even with the panel closed. **Hand edits to managed settings can be overwritten.**
 > Undo the relevant choices or [disable the plugin](#undo-or-stop-managing-appearance)
 > before managing those settings by hand. Background and boot artwork are not
@@ -21,7 +21,7 @@ Version **0.2.0** · Development release · [Tested coverage](RELEASE_VALIDATION
 
 - Applies a shared palette and fonts to supported GTK, Qt and terminal interfaces.
 - Offers separate system and terminal fonts, light/dark themes, solar switching,
-  wallpaper and installed icon choices.
+  terminal opacity, wallpaper and installed icon choices.
 - Shows application actions that still need attention, such as closing an app
   or signing back in to activate Qt integration.
 - Includes app-specific adapters and optional boot artwork, with separate Undo.
@@ -54,6 +54,10 @@ applications may need to be closed or restarted.
 
 1. Open **Look & Feel** from its bar button.
 2. Choose your mode, Light and Dark themes, and background in **Appearance**.
+   **Terminal opacity** is a separate dropdown below the themes: keep current
+   settings, or choose 0–100% in 5% steps. 70% opacity means 30% transparency.
+   **Terminal blur** beside it offers Keep current, Off and On. It changes
+   terminal blur independently of opacity, using the current compositor blur strength.
    Icons are optional. Put extra wallpaper images in `~/.config/omarchy/backgrounds/`.
 3. Choose the system and terminal font families and sizes in **Fonts**.
 4. Press **Apply changes**. It uses selections from all three tabs. Check
@@ -70,7 +74,7 @@ restarting the shell clears unapplied drafts.
 
 ## Undo or stop managing appearance
 
-Use **Undo theme**, **Undo fonts**, or the **Undo** beside Background and Icons
+Use **Undo theme**, **Undo opacity**, **Undo blur**, **Undo fonts**, or the **Undo** beside Background and Icons
 to reverse the latest change in that section. Boot artwork has **Undo boot artwork**
 and an explicit recovery action for interrupted operations.
 
@@ -79,6 +83,15 @@ saved choice may become active again. To return through all previous plugin
 changes, repeat the relevant Undo controls while they remain available, then
 disable or remove the plugin. If Undo reports a conflict, read its Details;
 it will preserve edits it cannot safely restore.
+
+Opacity applies to installed Ghostty, Alacritty, Kitty, Foot and WezTerm; it
+preserves blur settings. Ghostty keeps explicitly coloured prompt and application cells opaque. Foot and Kitty may need to be fully quit and reopened; Applications
+keeps the notice until the old process exits. Reload failures are retried.
+Opacity has its own saved choice, automatic repair and Undo, independent of
+fonts and light/dark palette selection. Application backgrounds in other terminals
+still follow their native transparency rules. Unsupported custom configuration
+syntax is refused. Undo merges preserve unrelated settings; an empty section
+header can remain when another setting was changed after Apply.
 
 To stop automatic repair and keep the current application settings:
 
@@ -146,9 +159,20 @@ with its example underneath. The Mode label sits beside the three mode buttons:
 - **Fonts:** compare samples of the selected system and terminal fonts at their
   chosen sizes. The monospace filter belongs to the terminal selector. Samples
   demonstrate the font in this panel; they do not verify another application.
-- **Applications:** review outstanding actions, search detected applications,
-  and audit a missing application. A detected application is not automatically
-  a supported or visually verified application.
+- **Applications:** review outstanding actions and audit applications not
+  automatically configured by the plugin.
+
+An application audit searches installed launchers and packages and saves its
+result. **Font support detected** means the app matches an existing shared GTK,
+Qt, or supported terminal font control. It does not apply the font, add an
+adapter, verify the rendered font, or register app-specific theme controls.
+**Font support not detected** means the app was not found, the search was
+ambiguous, or its font control is unsupported. Ambiguous and unsupported matches
+are saved and block Fonts Apply and automatic font repair. Earlier steps of
+**Apply changes** may already have completed before Fonts stops. A more specific
+audit does not remove an earlier ambiguous result. **Clear Audits** removes
+all saved manual audit records, including supported ones, without undoing settings
+or removing automatic support. A search with no match saves no new record.
 
 PCManFM is listed for reopening when its GTK appearance settings change while
 its process is being monitored. Fully quit and reopen it to clear that notice;
@@ -165,7 +189,7 @@ Switching tabs, reopening the panel and refreshing the catalog preserve drafts
 while the plugin instance remains loaded. Drafts are not saved across a shell
 restart. **Apply changes** uses selections from all three tabs. Section results
 describe the last action; expand **Details** for the full result. Undo remains
-separate for themes, fonts, backgrounds, icons and boot artwork. Interrupted
+separate for themes, opacity, fonts, backgrounds, icons and boot artwork. Interrupted
 boot operations expose an explicit **Recover boot artwork** action. Font Undo refreshes the font
 choices without discarding unrelated drafts.
 

@@ -85,6 +85,14 @@ BarWidget {
       if (result.schemaVersion !== 1 || !Array.isArray(result.pendingApplications)) throw new Error("Invalid reconciliation result")
       root.reconciliationFailed = false
       root.reconciliationPending = result.pendingApplications
+      var panel = panelLoader.item
+      var opacity = (result.results || {}).opacity
+      if (panel && opacity && Array.isArray(opacity.pendingApplications)) {
+        panel.updatePending("opacity", opacity)
+        panel.opacityActionNeedsAttention = opacity.pendingApplications.length > 0
+        if (!panel.opacityActionNeedsAttention && (panel.sectionResults.opacity || {}).state === "pending")
+          panel.setSectionResult("opacity", "saved", "No terminal reloads are pending.")
+      }
       if (Array.isArray(result.restartApplications)) root.restartApplications = result.restartApplications
       root.reconciliationMessage = result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join("\n")
     } catch (e) { root.reconciliationFailed = true; root.reconciliationMessage = "The appearance check returned an unreadable result." }

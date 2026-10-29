@@ -1,5 +1,25 @@
 # Project status
 
+October 29 local change: Appearance now has a separate Terminal opacity dropdown
+below the theme choices (keep current, or 0–100% in 5% steps). It uses independent
+policy ownership, Apply, automatic repair and Undo across the five supported
+terminals. Coloured prompt backgrounds remain opaque; blur is preserved.
+Reload/reopen notices retain process identity and retry failed signals. Native
+parsers, isolated transactions and native panel checks are recorded in
+RELEASE_VALIDATION.md. This change follows the October 28 release archive below.
+The opacity dropdown is now compact and left-aligned, with a 240 logical-pixel
+maximum width. The October 29 changes remain local and await owner review before
+any push or submission.
+
+The initial opacity implementation failed its visible acceptance test because
+global GTK palette backgrounds covered Ghostty's transparent renderer. The
+corrected palette scopes solid surfaces to `window.background`; a reloadable
+Ghostty helper stylesheet also repairs existing processes without closing them.
+Live production 0/50/100% captures now pass in the original Ghostty process, with
+identical Starship prompt background pixels and exact restoration of the owner's
+selected 0% setting after the test. Independent review and limits are recorded in
+RELEASE_VALIDATION.md.
+
 Updated 2026-10-28. Version 0.2.0 implements the documented Omarchy appearance
 interfaces. On October 28, the owner confirmed a successful physical-machine
 reboot, the correct unlock screen and correctly themed applications. The supplied

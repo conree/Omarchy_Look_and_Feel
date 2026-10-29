@@ -162,12 +162,18 @@ def gtk_stylesheet(text, c):
     text = strip_appearance(text).rstrip()
     fg, bg = c['foreground'], c['background']
     selected_fg = readable(fg, c['selection'])
+    # Ghostty removes its window's .background class below 100% opacity.
+    # Unqualified window/stack/scrolledwindow rules paint an opaque layer
+    # behind its renderer, defeating native terminal background transparency.
+    solid_surfaces = ', '.join('window.background' + suffix for suffix in (
+        '', ' dialog', ' treeview', ' textview', ' textview text', ' .view',
+        ' list', ' row', ' notebook', ' stack', ' scrolledwindow'))
     return (text + '\n\n' + GTK_BEGIN + '\n' + '\n'.join([
         f'@define-color theme_bg_color {bg};', f'@define-color theme_fg_color {fg};',
         f'@define-color theme_base_color {bg};', f'@define-color theme_text_color {fg};',
         f'@define-color theme_selected_bg_color {c["selection"]};',
         f'@define-color theme_selected_fg_color {selected_fg};',
-        f'window, .background, dialog, treeview, textview, textview text, .view, list, row, notebook, stack, scrolledwindow {{ background-color: {bg}; color: {fg}; }}',
+        f'{solid_surfaces} {{ background-color: {bg}; color: {fg}; }}',
         f'headerbar, toolbar, menubar, menu, popover, popover contents, button, entry, combobox {{ background-image: none; background-color: {c["lighter_background"]}; color: {readable(fg, c["lighter_background"])}; }}',
         f'label {{ color: inherit; }}',
         f'*:selected, selection, *:checked {{ background-color: {c["selection"]}; color: {selected_fg}; }}',

@@ -55,6 +55,15 @@ Panel {
   property int selectedSystemSize: 12
   property int selectedTerminalSize: 12
   property string selectedThemeMode: "automatic"
+  property int selectedOpacity: -1
+  property string selectedBlur: "keep"
+  property var blurChoices: [{ id: "keep", name: "Keep current settings" },
+    { id: "off", name: "Off" }, { id: "on", name: "On" }]
+  property var opacityChoices: [{ id: -1, name: "Keep current settings" }].concat(
+    Array.from({ length: 21 }, function(_, index) {
+      var percent = index * 5
+      return { id: percent, name: percent + "%" + (percent === 100 ? " (opaque)" : "") }
+    }))
   property string lastAppliedTheme: ""
   property string observedTheme: ""
   property bool lastAppliedThemeSetThisSession: false
@@ -81,6 +90,7 @@ Panel {
   property bool fontUndoAvailable: false
   property bool fontActionNeedsAttention: false
   property bool themeActionNeedsAttention: false
+  property bool opacityActionNeedsAttention: false
   readonly property bool unlockApplyAvailable: root.inventoryLoaded && !!(root.appearanceActionStatuses.unlock || {}).applyAvailable
   property bool globalApplyRunning: false
   property string globalApplyStatus: ""
@@ -100,10 +110,8 @@ Panel {
   property bool refreshFontSelection: false
   property bool applyFailed: false
   property var sectionResults: ({})
-  property var pendingBySection: ({ fonts: [], theme: [] })
+  property var pendingBySection: ({ fonts: [], theme: [], opacity: [] })
   property var restartApplications: []
-  property var applicationRecords: []
-  property string applicationSearch: ""
   readonly property bool busy: globalApplyRunning || appearanceActionRunning || fontActionRunning || manualAppActionRunning || manualAuditClearRunning
   readonly property var attentionItems: collectAttention()
   readonly property var activePreview: (themes.find(function(entry) { return entry.name === root.observedTheme }) || {}).preview || ({})
@@ -196,7 +204,7 @@ Panel {
 
   function collectAttention() {
     var items = [], seen = ({})
-    var pending = (root.pendingBySection.fonts || []).concat(root.pendingBySection.theme || [])
+    var pending = (root.pendingBySection.fonts || []).concat(root.pendingBySection.theme || [], root.pendingBySection.opacity || [])
     if (root.hostWidget) pending = pending.concat(root.hostWidget.reconciliationPending || [])
     pending = pending.concat((root.hostWidget ? root.hostWidget.restartApplications : root.restartApplications) || [])
     pending.forEach(function(item) {
@@ -221,9 +229,12 @@ Panel {
     return "Needs attention"
   }
 
-  function filteredApplications() {
-    var query = root.applicationSearch.trim().toLowerCase()
-    return root.applicationRecords.filter(function(app) { return !query || (app.name + " " + app.id + " " + app.framework).toLowerCase().indexOf(query) >= 0 })
+  function auditResultMessage(result) {
+    if (result.status === "not-found")
+      return "Font support not detected. No matching installed application was found."
+    var findings = Array.isArray(result.findings) ? result.findings : []
+    return findings.length === 1 && findings[0].fontStatus === "registered"
+      ? "Font support detected" : "Font support not detected"
   }
 
   function runAppearanceAction(kind, args, fromGlobalApply) {
@@ -245,6 +256,14 @@ Panel {
     return root.runAppearanceAction("theme", ["apply-theme", root.selectedThemeMode,
       root.catalogName(root.themes, root.selectedLightThemeId),
       root.catalogName(root.themes, root.selectedDarkThemeId)], fromGlobalApply)
+  }
+
+  function applySelectedOpacity(fromGlobalApply) {
+    return root.runAppearanceAction("opacity", ["apply-opacity", String(root.selectedOpacity)], fromGlobalApply)
+  }
+
+  function applySelectedBlur(fromGlobalApply) {
+    return root.runAppearanceAction("blur", ["apply-blur", root.selectedBlur], fromGlobalApply)
   }
 
   function applySelectedIcons(fromGlobalApply) {
@@ -335,6 +354,8 @@ Panel {
   function globalApplyStepName(step) {
     if (step === "fonts") return "Fonts"
     if (step === "theme") return "Theme"
+    if (step === "opacity") return "Terminal opacity"
+    if (step === "blur") return "Terminal blur"
     if (step === "background") return "Background"
     if (step === "icons") return "Icons"
     if (step === "unlock") return "Boot unlock"
@@ -373,6 +394,9 @@ Panel {
     }
     root.applyFailed = false
     root.globalApplySteps = ["theme", "fonts", "background"]
+    if (root.selectedOpacity >= 0) root.globalApplySteps.splice(1, 0, "opacity")
+    if (root.selectedBlur && root.selectedBlur !== "keep")
+      root.globalApplySteps.splice(root.globalApplySteps.indexOf("fonts"), 0, "blur")
     if (root.selectedIconId) root.globalApplySteps.push("icons")
     if (root.unlockApplyAvailable && root.unlockSelectionChanged && root.selectedUnlockId) root.globalApplySteps.push("unlock")
     root.globalApplyStepIndex = 0
@@ -386,7 +410,7 @@ Panel {
     if (root.globalApplyStepIndex >= root.globalApplySteps.length) {
       var includedUnlock = root.globalApplySteps.indexOf("unlock") >= 0
       root.globalApplyRunning = false
-      root.globalApplyStatus = (root.fontActionNeedsAttention || root.themeActionNeedsAttention)
+      root.globalApplyStatus = (root.fontActionNeedsAttention || root.themeActionNeedsAttention || root.opacityActionNeedsAttention)
         ? "Settings saved. Some applications need attention; see Applications."
         : (includedUnlock ? "Settings saved, including verified boot artwork." : "Settings saved.")
       return
@@ -399,6 +423,8 @@ Panel {
     var started = false
     if (step === "fonts") started = root.applyGlobalFonts(true)
     else if (step === "theme") started = root.applySelectedTheme(true)
+    else if (step === "opacity") started = root.applySelectedOpacity(true)
+    else if (step === "blur") started = root.applySelectedBlur(true)
     else if (step === "background") started = root.applySelectedBackground(true)
     else if (step === "icons") started = root.applySelectedIcons(true)
     else if (step === "unlock") started = root.applySelectedUnlock(true)
@@ -526,7 +552,6 @@ Panel {
       var statuses = data.appearance_action_status || ({})
       if (!previewOnly) {
         root.inventoryError = ""
-        root.applicationRecords = ((data.font_application_inventory || {}).desktopApplications || []).filter(function(app) { return !app.hidden && !app.noDisplay && app.launchable !== false }).sort(function(a, b) { return a.name.localeCompare(b.name) })
       }
       fonts = entries.fonts || []
       themes = (entries.themes || []).filter(function(entry) { return entry.selectable })
@@ -569,6 +594,10 @@ Panel {
             && data.preferences.terminalFontSizePt >= 6 && data.preferences.terminalFontSizePt <= 48)
           selectedTerminalSize = data.preferences.terminalFontSizePt
         selectedThemeMode = "automatic"
+        selectedOpacity = data.desiredAppearance && Number.isInteger(data.desiredAppearance.opacity)
+          ? data.desiredAppearance.opacity : -1
+        var savedBlur = data.desiredAppearance && data.desiredAppearance.blur
+        selectedBlur = typeof savedBlur === "boolean" ? (savedBlur ? "on" : "off") : "keep"
         var savedTheme = data.desiredAppearance && data.desiredAppearance.theme
         if (savedTheme) {
           selectedThemeMode = savedTheme.mode
@@ -610,7 +639,7 @@ Panel {
     wrapMode: Text.Wrap
     textFormat: Text.PlainText
   }
-  component FieldLabel: Caption { color: root.labelColor; font.weight: Font.Medium }
+  component FieldLabel: Caption { color: root.labelColor; font.weight: Font.Medium; font.pixelSize: root.controlFontPixelSize + 2 }
   component Divider: Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: root.lineColor }
   component ActionButton: Controls.Button {
     id: action
@@ -710,7 +739,7 @@ Panel {
     property string kind: ""
     property var result: root.sectionResults[kind] || ({})
     property bool expanded: false
-    visible: !!result.state
+    visible: !!result.state && result.state !== "saved"
     spacing: 4
     RowLayout {
       Layout.fillWidth: true
@@ -895,6 +924,8 @@ Panel {
         Caption { Layout.fillWidth: true; text: choice.selectedFamily ? choice.selectedFamily + " · " + choice.selectedSize + " pt" : "Choose a font"; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 2); elide: Text.ElideRight; maximumLineCount: 1 }
       }
     }
+    RowLayout {
+      Layout.fillWidth: true; visible: choice.terminal
     Controls.CheckBox {
       id: monoFilter
       objectName: choice.terminal ? "monospaceFilter" : "systemMonospaceFilter"
@@ -914,6 +945,9 @@ Panel {
         Text { anchors.centerIn: parent; text: "✓"; visible: monoFilter.checked; color: root.popupBackground; font.pixelSize: 14; font.bold: true }
       }
       contentItem: Text { text: parent.text; font: parent.font; color: root.popupForeground; leftPadding: parent.indicator.width + 8; verticalAlignment: Text.AlignVCenter }
+    }
+      Item { Layout.fillWidth: true }
+      ActionButton { objectName: "undoFontsButton"; text: "Undo fonts"; quiet: true; visible: root.fontUndoAvailable; onClicked: root.undoGlobalFonts() }
     }
   }
 
@@ -1004,6 +1038,7 @@ Panel {
               enabled: root.inventoryLoaded && !root.busy; spacing: 16
               RowLayout {
                 Layout.fillWidth: true; spacing: 6
+                ActionButton { objectName: "undoThemeButton"; text: contentViewport.width < 620 ? "Undo" : "Undo theme"; Accessible.name: "Undo theme"; quiet: true; visible: !!(root.appearanceActionStatuses.theme || {}).undoAvailable; onClicked: root.undoAppearanceAction("theme") }
                 Item { Layout.fillWidth: true }
                 FieldLabel { text: "Mode"; Layout.rightMargin: 8 }
                 Repeater {
@@ -1022,12 +1057,59 @@ Panel {
                 ThemeChoice { light: false; heading: "Dark theme" }
               }
               Caption { Layout.fillWidth: true; text: "Automatic follows local sunrise and sunset."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; visible: root.selectedThemeMode === "automatic" }
-              RowLayout {
-                Layout.fillWidth: true
-                ResultNotice { Layout.fillWidth: true; kind: "theme" }
-                Item { Layout.fillWidth: true; visible: !root.sectionResults.theme }
-                ActionButton { text: "Undo theme"; quiet: true; visible: !!(root.appearanceActionStatuses.theme || {}).undoAvailable; onClicked: root.undoAppearanceAction("theme") }
+              ColumnLayout {
+                Layout.fillWidth: true; spacing: 8
+                GridLayout {
+                  id: terminalControlsGrid
+                  Layout.fillWidth: true; Layout.maximumWidth: 492; Layout.alignment: Qt.AlignLeft
+                  columns: width < 480 ? 1 : 2; columnSpacing: 12; rowSpacing: 12
+                  ColumnLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    RowLayout {
+                      Layout.fillWidth: true
+                      FieldLabel { text: "Terminal opacity"; Layout.fillWidth: true }
+                      ActionButton { objectName: "undoOpacityButton"; text: "Undo"; Accessible.name: "Undo opacity"; quiet: true; visible: !!(root.appearanceActionStatuses.opacity || {}).undoAvailable; onClicked: root.undoAppearanceAction("opacity") }
+                    }
+                    Picker {
+                      id: terminalOpacityPicker
+                      objectName: "terminalOpacityPicker"
+                      Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: 240
+                      accessibleLabel: "Terminal opacity"
+                      model: root.opacityChoices
+                      currentIndex: root.opacityChoices.findIndex(function(entry) { return entry.id === root.selectedOpacity })
+                      onActivated: function(index) { root.selectedOpacity = root.opacityChoices[index].id }
+                    }
+                  }
+                  ColumnLayout {
+                    id: terminalBlurColumn
+                    Layout.fillWidth: true; spacing: 8
+                    RowLayout {
+                      Layout.fillWidth: true
+                      FieldLabel { text: "Terminal blur"; Layout.fillWidth: true }
+                      ActionButton { objectName: "undoBlurButton"; text: "Undo"; Accessible.name: "Undo blur"; quiet: true; visible: !!(root.appearanceActionStatuses.blur || {}).undoAvailable; onClicked: root.undoAppearanceAction("blur") }
+                    }
+                    Picker {
+                      id: terminalBlurPicker
+                      objectName: "terminalBlurPicker"
+                      Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: 240
+                      accessibleLabel: "Terminal blur"
+                      model: root.blurChoices
+                      currentIndex: root.blurChoices.findIndex(function(entry) { return entry.id === root.selectedBlur })
+                      onActivated: function(index) { root.selectedBlur = root.blurChoices[index].id }
+                    }
+                  }
+                }
+                Caption {
+                  Layout.fillWidth: true
+                  Layout.maximumWidth: terminalBlurColumn.x + terminalBlurPicker.width
+                  Layout.alignment: Qt.AlignLeft
+                  color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2
+                  text: "70% opacity means 30% transparency. Blur softens the background behind terminals. Coloured prompt backgrounds stay opaque."
+                }
+                ResultNotice { Layout.fillWidth: true; kind: "opacity" }
+                ResultNotice { Layout.fillWidth: true; kind: "blur" }
               }
+              ResultNotice { Layout.fillWidth: true; kind: "theme" }
               Divider {}
               GridLayout {
                 Layout.fillWidth: true; columns: width < 620 ? 1 : 2
@@ -1071,7 +1153,7 @@ Panel {
               RowLayout {
                 Layout.fillWidth: true
                 FieldLabel { text: "Boot unlock artwork"; Layout.fillWidth: true }
-                Caption { text: "Administrator approval"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
+                ActionButton { objectName: "undoBootArtworkButton"; text: "Undo"; Accessible.name: "Undo boot artwork"; quiet: true; visible: !!(root.appearanceActionStatuses.unlock || {}).undoAvailable; onClicked: root.undoAppearanceAction("unlock") }
               }
               ColumnLayout {
                 objectName: "unlockExamples"
@@ -1107,11 +1189,11 @@ Panel {
                 }
                 RowLayout {
                   Layout.fillWidth: true
-                  ActionButton { text: "Undo boot artwork"; quiet: true; visible: !!(root.appearanceActionStatuses.unlock || {}).undoAvailable; onClicked: root.undoAppearanceAction("unlock") }
+                  visible: !!(root.appearanceActionStatuses.unlock || {}).recoveryAvailable
                   ActionButton { text: "Recover boot artwork"; quiet: true; visible: !!(root.appearanceActionStatuses.unlock || {}).recoveryAvailable; onClicked: root.runAppearanceAction("unlock", ["recover-unlock"]) }
                 }
                 ResultNotice { Layout.fillWidth: true; kind: "unlock" }
-                Caption { Layout.fillWidth: true; text: "Changes the boot logo. Existing boot colours stay in place. Administrator approval is requested only when you apply a new selection."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+                Caption { Layout.fillWidth: true; text: "Applying or undoing boot artwork requires administrator approval."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               }
             }
             ColumnLayout {
@@ -1120,12 +1202,21 @@ Panel {
               Caption { Layout.fillWidth: true; text: "Two fonts. One consistent desktop."; color: root.mutedColor }
               GridLayout { Layout.fillWidth: true; columns: width < 620 ? 1 : 2; uniformCellWidths: true; columnSpacing: 24; rowSpacing: 24; FontChoice { terminal: false } FontChoice { terminal: true } }
               Divider {}
-              RowLayout { Layout.fillWidth: true; Caption { Layout.fillWidth: true; text: "Samples show your selections here. Application rendering may differ until settings are applied and the application is reopened."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 } ActionButton { text: "Undo fonts"; quiet: true; visible: root.fontUndoAvailable; onClicked: root.undoGlobalFonts() } }
+              Caption { Layout.fillWidth: true; text: "Font changes may require reopening applications."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               ResultNotice { Layout.fillWidth: true; kind: "fonts" }
             }
             ColumnLayout {
               objectName: "applicationsPage"
               width: parent.width; visible: root.activeTab === 2; spacing: 16
+              FieldLabel { Layout.fillWidth: true; text: "Audit Applications not Automatically Configured by the Plugin" }
+              RowLayout {
+                Layout.fillWidth: true
+                SearchField { id: manualAppField; Layout.fillWidth: true; enabled: !root.busy; placeholderText: "App name, launcher, or package"; text: root.manualAppQuery; onTextEdited: root.manualAppQuery = text; onAccepted: root.inspectManualApp(); Accessible.name: "Application to audit" }
+                ActionButton { text: root.manualAppActionRunning ? "Auditing…" : "Audit app"; enabled: !root.busy && root.manualAppQuery.trim().length >= 2; onClicked: root.inspectManualApp() }
+              }
+              Caption { Layout.fillWidth: true; visible: !!root.manualAppStatus; text: root.manualAppStatus; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+              ActionButton { text: "Clear Audits"; quiet: true; enabled: !root.busy; onClicked: root.clearManualAudit() }
+              Divider {}
               FieldLabel { text: root.attentionItems.length ? "Needs your attention" : "Application settings" }
               Caption { Layout.fillWidth: true; visible: !root.attentionItems.length; text: "No pending actions reported. Saved settings do not verify each application's appearance."; color: root.mutedColor }
               Repeater {
@@ -1141,36 +1232,6 @@ Panel {
                   }
                 }
               }
-              Divider {}
-              RowLayout { Layout.fillWidth: true; FieldLabel { text: "Detected applications"; Layout.fillWidth: true } Caption { text: root.applicationRecords.length + " found"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 } }
-              SearchField { Layout.fillWidth: true; placeholderText: "Find an installed application…"; text: root.applicationSearch; onTextEdited: root.applicationSearch = text; Accessible.name: "Search detected applications" }
-              ListView {
-                id: applicationList
-                Layout.fillWidth: true; implicitHeight: Math.min(260, contentHeight)
-                clip: true; model: root.filteredApplications(); spacing: 1
-                Controls.ScrollBar.vertical: Controls.ScrollBar {}
-                delegate: Rectangle {
-                  required property var modelData
-                  width: applicationList.width; height: root.controlFontPixelSize * 3.5
-                  color: root.surfaceColor
-                  Column {
-                    anchors.fill: parent; anchors.margins: 10; spacing: 3
-                    Caption { width: parent.width; text: modelData.name; elide: Text.ElideRight; maximumLineCount: 1 }
-                    Caption { width: parent.width; text: modelData.framework || "Toolkit not identified"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; elide: Text.ElideRight; maximumLineCount: 1 }
-                  }
-                }
-              }
-              Caption { Layout.fillWidth: true; visible: applicationList.count === 0; text: root.applicationSearch ? "No matching applications. Audit it below." : "No applications found in the current inventory."; color: root.mutedColor }
-              Caption { Layout.fillWidth: true; text: "Detection identifies applications and toolkits, not verified appearance."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
-              Divider {}
-              FieldLabel { text: "Audit another application" }
-              RowLayout {
-                Layout.fillWidth: true
-                SearchField { id: manualAppField; Layout.fillWidth: true; enabled: !root.busy; placeholderText: "App name, launcher, or package"; text: root.manualAppQuery; onTextEdited: root.manualAppQuery = text; onAccepted: root.inspectManualApp(); Accessible.name: "Application to audit" }
-                ActionButton { text: root.manualAppActionRunning ? "Auditing…" : "Audit app"; enabled: !root.busy && root.manualAppQuery.trim().length >= 2; onClicked: root.inspectManualApp() }
-              }
-              Caption { Layout.fillWidth: true; visible: !!root.manualAppStatus; text: root.manualAppStatus; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
-              ActionButton { text: "Clear registrations"; quiet: true; enabled: !root.busy; onClicked: root.clearManualAudit() }
               Caption { Layout.fillWidth: true; visible: !!root.globalApplyStatus; text: root.globalApplyStatus; color: root.applyFailed ? root.warningColor : root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
             }
           }
@@ -1244,7 +1305,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Save your work in all open applications before applying changes. Some applications may need to be closed or restarted. Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
+              text: "Save your work in all open applications before applying changes. Some applications may need to be closed or restarted. Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, selected terminal opacity, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1276,7 +1337,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Choose Automatic, Light or Dark mode on the Appearance tab. Automatic follows local sunrise and sunset. In every mode, the loaded plugin checks saved themes, fonts and icons on startup and every 15 seconds, even with the panel closed. Hand edits to managed settings can be replaced. Undo the relevant choices, or disable the plugin to stop repair. Choose the Light and Dark themes, then apply. Undo theme restores the previous detected theme."
+              text: "Choose Automatic, Light or Dark mode on the Appearance tab. Automatic follows local sunrise and sunset. Terminal opacity applies separately to installed Ghostty, Alacritty, Kitty, Foot and WezTerm. Choose a percentage, then Apply changes. 100% is opaque; 70% is 30% transparent. Coloured prompt backgrounds remain opaque. Foot and Kitty may need to be fully quit and reopened. Undo opacity restores previous opacity settings independently of fonts and themes. In every mode, the loaded plugin checks saved themes, fonts, icons and opacity on startup and every 15 seconds, even with the panel closed. Hand edits to managed settings can be replaced. Undo the relevant choices, or disable the plugin to stop repair. Undo theme restores the previous detected theme."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1340,7 +1401,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Enter an application name, launcher, or package and press Return or select Audit app. The lookup searches separately from the automatic inventory. It can register verified shared GTK or supported terminal font surfaces for global font Apply; app-specific theme controls are not registered. Ambiguous or unsupported results block font Apply. Clear registrations deletes the saved manual audit registrations. Audit results omit application names."
+              text: "Enter an application name, launcher, or package and select Audit app. The audit searches installed launchers and packages, then saves its result. Font support detected means the app matches an existing shared GTK, Qt, or supported terminal font control. It does not apply fonts, add a new adapter, verify the rendered font, or register app-specific theme controls. Font support not detected means the app was not found, the result was ambiguous, or its font control is unsupported. Ambiguous or unsupported matches are saved and block Fonts Apply and automatic font repair; earlier steps in Apply changes may already have completed. A more specific audit does not remove an earlier ambiguous result. Clear Audits removes all saved manual audit records, including supported ones, without undoing settings or removing automatic support. A search with no match saves no new record."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1422,6 +1483,10 @@ Panel {
           } else if (kind === "icons") {
             var restoredIcon = root.icons.find(function(entry) { return entry.name === result.restored })
             root.selectedIconId = restoredIcon ? restoredIcon.id : ""
+          } else if (kind === "opacity") {
+            root.selectedOpacity = Number.isInteger(result.savedPercent) ? result.savedPercent : -1
+          } else if (kind === "blur") {
+            root.selectedBlur = typeof result.savedBlur === "boolean" ? (result.savedBlur ? "on" : "off") : "keep"
           } else {
             var restoredUnlock = root.unlockDesigns.find(function(entry) { return String(entry.name).toLowerCase().replace(/_/g, "-") === String(result.restored || "").toLowerCase().replace(/_/g, "-") })
             if (restoredUnlock) { root.selectedUnlockId = restoredUnlock.id; root.selectedUnlockPreview = restoredUnlock.preview || "" }
@@ -1442,6 +1507,10 @@ Panel {
           message = "Desktop theme changed; application configuration was saved and read back."
         } else if (kind === "icons") {
           message = "Icon settings saved and read back for desktop, GTK and available Qt integrations."
+        } else if (kind === "opacity") {
+          message = "Terminal opacity saved at " + result.opacityPercent + "%."
+        } else if (kind === "blur") {
+          message = "Terminal blur is " + (result.blurEnabled ? "On" : "Off") + "."
         } else if (kind === "background") {
           message = "Applied and verified the selected background."
         } else {
@@ -1462,7 +1531,12 @@ Panel {
         root.appearanceActionMessages = messages
         root.updateRestartApplications(result)
         if (kind === "theme") root.updatePending("theme", result)
-        root.setSectionResult(kind, kind === "theme" && root.themeActionNeedsAttention ? "pending" : "saved", message)
+        if (kind === "opacity") {
+          root.updatePending("opacity", result)
+          root.opacityActionNeedsAttention = (result.pendingApplications || []).length > 0
+          if ((result.pendingApplications || []).length) message += " " + result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join(" ")
+        }
+        root.setSectionResult(kind, (kind === "theme" && root.themeActionNeedsAttention) || (kind === "opacity" && root.opacityActionNeedsAttention) ? "pending" : "saved", message)
         if (kind === "unlock") root.unlockSelectionChanged = false
         root.appearanceAuditStatus = ""
         root.refreshInventory()
@@ -1567,16 +1641,7 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
       try {
         var result = JSON.parse(String(text || "{}"))
-        if (result.status === "launcher-found" || result.status === "installed-item-found-no-launcher") {
-          root.manualAppStatus = "Audit complete: " + Number(result.matchCount || 0) + " matching record(s). Registered font surfaces: "
-            + Number(result.registeredCount || 0) + "; unsupported or unresolved surfaces: " + Number(result.unsupportedCount || 0)
-            + ". App-specific theme surfaces not registered: " + Number(result.themeUnsupportedCount || 0) + ". "
-            + (result.findings || []).slice(0, 4).map(function(item, index) {
-              return "Finding " + (index + 1) + ": " + (item.framework || "framework unknown") + "; "
-                + (item.roles || "control surface unknown") + "; font " + (item.fontStatus || "unsupported") + "."
-            }).join(" ")
-        } else
-          root.manualAppStatus = "No matching installed record was found. Check the entry and try again."
+        root.manualAppStatus = root.auditResultMessage(result)
       } catch (e) {
         root.manualAppStatus = "The app audit could not read its result."
       }
@@ -1592,13 +1657,13 @@ Panel {
     stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
       try {
         var result = JSON.parse(String(text || "{}"))
-        root.manualAppStatus = result.cleared ? "Manual audit registrations cleared." : "The audit registry could not be cleared."
+        root.manualAppStatus = result.cleared ? "Saved audits cleared." : "Saved audits could not be cleared."
       } catch (e) {
-        root.manualAppStatus = "The audit registry could not be cleared."
+        root.manualAppStatus = "Saved audits could not be cleared."
       }
     } }
     stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      if (String(text || "").trim()) root.manualAppStatus = "The audit registry could not be cleared safely."
+      if (String(text || "").trim()) root.manualAppStatus = "Saved audits could not be cleared safely."
     } }
     onRunningChanged: if (!running) root.manualAuditClearRunning = false
   }

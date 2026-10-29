@@ -22,8 +22,14 @@ LABEL_FONTS = 'Global font settings'
 
 def validate(data):
     if (not isinstance(data, dict) or data.get('schemaVersion') != 1
-            or set(data) not in ({'schemaVersion', 'fonts', 'theme', 'background'}, {'schemaVersion', 'fonts', 'theme', 'background', 'icons'})):
+            or not {'schemaVersion', 'fonts', 'theme', 'background'} <= set(data)
+            or set(data) - {'schemaVersion', 'fonts', 'theme', 'background', 'icons', 'opacity', 'blur'}):
         raise ValueError('unsupported Look and Feel policy schema')
+    if data.get('blur') is not None and type(data['blur']) is not bool:
+        raise ValueError('Terminal blur must be On or Off')
+    if data.get('opacity') is not None:
+        from opacity_actions import validate_percent
+        validate_percent(data['opacity'])
     if data.get('icons') is not None and (not isinstance(data['icons'], str) or not data['icons'].startswith('icon:') or len(data['icons']) > 300):
         raise ValueError('invalid saved icon selection')
     fonts = data['fonts']
@@ -249,13 +255,19 @@ def reconcile():
     import controller
     policy = read()
     pending, results = [], {}
-    for section in ('theme', 'fonts', 'icons'):
+    for section in ('theme', 'fonts', 'icons', 'opacity', 'blur'):
         value = policy.get(section)
         if value is None:
             continue
         try:
             if section == 'theme':
                 result = apply_theme(value['mode'], value['light'], value['dark'], automatic=True)
+            elif section == 'blur':
+                from blur_actions import apply as apply_blur
+                result = apply_blur(value, automatic=True)
+            elif section == 'opacity':
+                from opacity_actions import apply as apply_opacity
+                result = apply_opacity(value, automatic=True)
             elif section == 'icons':
                 from icon_actions import apply as apply_icons
                 result = apply_icons(value, automatic=True)
@@ -267,12 +279,27 @@ def reconcile():
                 pending.append({'app': 'Fonts', 'action': 'manual-audit',
                                 'reason': 'A registered application no longer has a verified font adapter; review its application audit before applying fonts.'})
             for name in result.get('terminalReload', {}).get('failed', []):
-                pending.append({'app': name, 'action': 'reload', 'reason': 'Saved fonts could not be loaded into its running window; reopen it or retry Apply.'})
+                if not any(row.get('app') == name and row.get('action') == 'reload' for row in pending):
+                    pending.append({'app': name, 'action': 'reload', 'reason': f'Saved {section} settings could not be loaded into its running window; reopen it or retry Apply.'})
             results[section] = result
         except (OSError, RuntimeError, ValueError) as exc:
             pending.append({'app': section, 'action': 'retry', 'reason': str(exc)})
     status = {'schemaVersion': 1, 'pendingApplications': pending, 'results': results,
               'renderedAppearanceVerified': False}
+    if policy.get('blur') is None:
+        from blur_actions import refresh as refresh_blur
+        try:
+            refresh_blur()
+        except (OSError, RuntimeError, ValueError) as exc:
+            pending.append({'app': 'blur', 'action': 'retry', 'reason': str(exc)})
+    if 'opacity' not in results:
+        from opacity_actions import _refresh
+        try:
+            _, opacity_pending = _refresh({})
+            pending.extend(opacity_pending)
+            results['opacity'] = {'pendingApplications': opacity_pending}
+        except (OSError, RuntimeError, ValueError) as exc:
+            pending.append({'app': 'opacity', 'action': 'retry', 'reason': str(exc)})
     from application_restarts import add_to_result
     add_to_result(status)
     path = tx.transactions_path().parent / 'reconcile-status.json'

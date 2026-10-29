@@ -8,7 +8,7 @@ import json
 import re
 
 DEFAULT = 'local config = {}\nreturn config\n'
-ROLES = ('fonts', 'theme')
+ROLES = ('fonts', 'theme', 'opacity')
 
 
 def _tokens(text, comments=False):
@@ -76,7 +76,7 @@ def insertion(text):
 
 
 def decode(text):
-    data = {'body': text or DEFAULT, 'fonts': None, 'theme': None}
+    data = {'body': text or DEFAULT, **dict.fromkeys(ROLES)}
     comments = {a for kind, a, b in _tokens(text, comments=True) if kind == 'COMMENT'}
     for role in ROLES:
         for suffix in ('BEGIN', 'END'):

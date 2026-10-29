@@ -15,7 +15,7 @@ def inspect():
         ('Omarchy shell','omarchy-shell',['theme','background'],'omarchy'),
         ('Hyprland control','hyprctl',['theme'],'hyprland'),
         ('Application process checks','pgrep',['fonts','theme'],'procps-ng'),
-        ('Terminal reload signals','pkill',['fonts','theme'],'procps-ng'),
+        ('Terminal reload signals','pkill',['fonts','theme','opacity'],'procps-ng'),
     ):
         add(name, shutil.which(command), areas, 'Install the '+package+' package.')
     try:

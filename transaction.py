@@ -62,6 +62,8 @@ FILE_TARGETS: dict[str, str] = {
     "hypr-qt-integration": (_configured_home_rel / "hypr" / "hyprland.lua").as_posix(),
     "ghostty-config": (_configured_home_rel / "ghostty" / _ghostty_filename).as_posix(),
     "ghostty-font-overlay": (_configured_home_rel / "ghostty" / "look-and-feel-font.conf").as_posix(),
+    "ghostty-opacity-css": (_configured_home_rel / "ghostty" / "look-and-feel-opacity.css").as_posix(),
+    "terminal-blur-config": (_configured_home_rel / "hypr" / "looknfeel.lua").as_posix(),
     "terminal-font-selection": (_configured_home_rel / "ghostty" / "look-and-feel-font-selection.json").as_posix(),
     "gtk3-settings": (_configured_home_rel / "gtk-3.0" / "settings.ini").as_posix(),
     "gtk4-settings": (_configured_home_rel / "gtk-4.0" / "settings.ini").as_posix(),
