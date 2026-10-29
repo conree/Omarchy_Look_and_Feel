@@ -4,9 +4,41 @@ This is a local working record for the next release, not a published changelog.
 Only describe a fix as released after it has been reviewed and validated. Keep
 unfixed findings out of the eventual fixed-issues list until they are addressed.
 
-Latest isolated suite: 33 checks passed. The stale-mail-lock check passed outside
-the process sandbox after its liveness assertion failed inside it. These results
-do not establish live appearance or interaction behavior.
+## 0.3.0 candidate — draft release description
+
+Look & Feel 0.3.0 adds independent terminal opacity and blur controls, improves
+application audit messages and pending-action handling, and makes font and
+opacity application more resilient when an optional target cannot be updated.
+It also improves Alacritty font handling and recovery of managed settings.
+
+Save your work and close open applications before applying changes, then reopen
+them. In particular, Brave's webpage font defaults are applied while Brave is
+closed; reopening Brave alone does not complete a previously pending Apply.
+Application-owned settings, browser policies and installed browser themes can
+affect the result. The Brave fixed-width font-size discrepancy remains under
+investigation: the current profile reads 16 CSS pixels for both default sizes,
+but the earlier observed value of 13 has not been explained. No claim is made
+that every application follows these settings.
+
+The user reports the audit lifecycle, failure-isolation and recovery, Brave
+workflow, and Ghostty opacity and blur tests passed; the precise setup of the
+failure-isolation test was not independently observed. Screenshots show the
+audit warning and a clean panel after applying with Brave and PCManFM closed.
+The user's live screenshot shows the revised close-applications text and 0.3.0
+label. Alacritty was not tested live because the user does not use it.
+
+The 0.3.0 candidate passed all 33 isolated test programs on 29 October 2026.
+The stale-mail-lock check passed outside the process sandbox after its liveness
+assertion failed inside it. These checks do not establish live appearance.
+The suite was rerun after the launcher-search change. A read-only lookup finds
+the installed Nextcloud Office — Test launcher with multiple dash and spacing
+variants.
+The user subsequently verified the live panel finds Nextcloud Office — Test
+using `NextCloud Office-Test`; the screenshot shows the unsupported shared
+font-control result. The other dash and spacing variants were checked in the
+backend, not individually in the live panel.
+The detailed entries below retain earlier observations and their historical
+verification gaps; the candidate summary above reflects subsequent reports.
 
 ## Changes in progress
 
@@ -78,6 +110,13 @@ do not establish live appearance or interaction behavior.
   reconciliation deliberately does not write Brave's profile, even when it
   closes. Review whether a safer, less manual way to apply the defaults is
   possible; toolbar rendering and webpage defaults are separate surfaces.
+  After the user closed Brave, applied again and reopened it, the screenshot
+  showed “Custom” for standard/serif/sans-serif. The saved Brave profile now
+  says `Visby CF Medium` for those three roles, matching the plugin. Fontconfig
+  identifies this as an alias of `Visby CF`; the Custom label is consistent with
+  that alias but does not by itself prove what Brave renders. Brave's fixed-width
+  size read back as 13 while the plugin's 12 pt target converts to 16 CSS pixels;
+  the reason for this difference needs investigation.
 - The user reports that the 100% terminal background appeared opaque, with no
   wallpaper visible; at 0%, the supplied image shows a transparent background
   and a visually solid coloured prompt. The transaction log confirms a
@@ -89,9 +128,8 @@ do not establish live appearance or interaction behavior.
   shows a clear background behind the transparent terminal; the saved policy
   and Hyprland rule independently read back blur Off. This does not independently
   verify the On state or blur Undo.
-- Release validation is blocked on live checks of the selected opacity extremes,
-  opaque prompt invariant, audit result and notice lifecycle, and the latest
-  changes after the shell is reloaded.
+- The user reports the requested opacity, blur and audit-lifecycle checks passed.
+  A later screenshot shows the new panel guidance and version label live.
 - A Brave pending card remained after a successful Apply even though Brave was
   closed, its font preferences matched the selection, and the latest automatic
   reconciliation reported no pending actions. Section-attributed pending results

@@ -1079,7 +1079,7 @@ Panel {
               spacing: 6
               Text { text: "Look"; color: root.brandColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
               Text { text: "& Feel"; color: root.accentColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
-              Caption { text: "v0.2.0"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
+              Caption { text: "v0.3.0"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
             }
             Caption { text: "Your desktop, in one place"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
           }
@@ -1312,7 +1312,7 @@ Panel {
         Divider {}
         Caption {
           Layout.fillWidth: true
-          text: "Save your work in all open applications before applying changes. Some applications may need to be closed or restarted."
+          text: "Save your work and close all open applications before applying changes via the Look & Feel plugin."
           color: root.mutedColor
           font.pixelSize: root.controlFontPixelSize - 2
         }
@@ -1378,7 +1378,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Save your work in all open applications before applying changes. Some applications may need to be closed or restarted. Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, selected terminal opacity, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
+              text: "Save your work and close all open applications before applying changes via the Look & Feel plugin. Reopen them after applying the changes. Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, selected terminal opacity, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize

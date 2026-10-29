@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import unicodedata
 from pathlib import Path
 
 from font_application_inventory import (
@@ -21,8 +22,14 @@ from font_application_inventory import (
 )
 
 
+def _normalize_query_text(value: str) -> str:
+    normalized = " ".join("".join("-" if unicodedata.category(c) == "Pd" else c
+                                 for c in value.casefold()).split())
+    return re.sub(r"\s*-\s*", "-", normalized)
+
+
 def _query_matches(query: str, value: str) -> bool:
-    return query.casefold() in value.casefold()
+    return _normalize_query_text(query) in _normalize_query_text(value)
 
 
 def inspect_app(query: str) -> dict[str, object]:
@@ -46,8 +53,8 @@ def inspect_app(query: str) -> dict[str, object]:
                 values = (fields.get("Name", ""), app_id, command, fields.get("TryExec", ""))
                 if not any(_query_matches(cleaned, value) for value in values if value):
                     continue
-                score = 100 if fields.get("Name", "").casefold() == cleaned.casefold() else 80
-                if command.casefold() == cleaned.casefold() or app_id.casefold() == cleaned.casefold():
+                score = 100 if _normalize_query_text(fields.get("Name", "")) == _normalize_query_text(cleaned) else 80
+                if _normalize_query_text(command) == _normalize_query_text(cleaned) or _normalize_query_text(app_id) == _normalize_query_text(cleaned):
                     score = max(score, 95)
                 desktop_matches.append((score, app_id, fields, path))
         except OSError:

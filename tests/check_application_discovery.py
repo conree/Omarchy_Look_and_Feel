@@ -37,3 +37,11 @@ for version in (5,6):
  record['fontRoles'].append('editor-monospace')
  assert registry._classify(record)=='unsupported', 'Editor-specific control cannot be inferred from Qt chrome'
 print('Manual audits register identified Qt system-font surfaces; app-specific editor controls remain explicit.')
+
+import manual_app_inspector as inspector
+assert inspector._query_matches('Nextcloud Office - Test', 'Nextcloud Office — Test')
+assert inspector._query_matches('nextcloud  office – test', 'Nextcloud Office — Test')
+assert inspector._query_matches('Nextcloud Office-Test', 'Nextcloud Office — Test')
+assert inspector._query_matches('Nextcloud Office  —  Test', 'Nextcloud Office — Test')
+assert not inspector._query_matches('Nextcloud Office - Test', 'Nextcloud Office — Production')
+print('Manual launcher search handles dash variants without matching different names.')

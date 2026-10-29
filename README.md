@@ -4,7 +4,7 @@ One panel to make supported GTK, Qt and terminal apps follow your Omarchy theme.
 Choose fonts, light/dark themes, terminal opacity and blur, backgrounds and icons, then press **Apply changes**.
 Changes are journalled, with separate **Undo** controls for each section.
 
-Version **0.2.0** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+Version **0.3.0** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
 > **Automatic repair:** after you apply a choice, the loaded plugin checks saved
 > themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and
@@ -49,8 +49,15 @@ or custom Omarchy builds may lack required theme-generation capabilities.
 
 ## First use
 
-Save your work in all open applications before applying changes. Some
-applications may need to be closed or restarted.
+Save your work and close all open applications before applying changes via the
+Look & Feel plugin. Reopen them after applying the changes.
+
+The plugin discovers installed fonts through Fontconfig and themes from the
+Omarchy theme directories, including `~/.config/omarchy/themes/`. Backgrounds
+come from Omarchy's theme and background directories, including
+`~/.config/omarchy/backgrounds/`, as well as the current wallpaper. Icon themes
+are discovered through the active XDG data directories. See [Live appearance
+catalogs](#live-appearance-catalogs) for the full locations.
 
 1. Open **Look & Feel** from its bar button.
 2. Choose your mode, Light and Dark themes, and background in **Appearance**.
