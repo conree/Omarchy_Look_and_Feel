@@ -176,7 +176,8 @@ def gtk_stylesheet(text, c):
         f'{solid_surfaces} {{ background-color: {bg}; color: {fg}; }}',
         f'headerbar, toolbar, menubar, menu, popover, popover contents, button, entry, combobox {{ background-image: none; background-color: {c["lighter_background"]}; color: {readable(fg, c["lighter_background"])}; }}',
         f'label {{ color: inherit; }}',
-        f'*:selected, selection, *:checked {{ background-color: {c["selection"]}; color: {selected_fg}; }}',
+        # Match the scoped .view surface specificity so selected GTK rows win.
+        f'*:selected, window.background *:selected, selection, *:checked {{ background-color: {c["selection"]}; color: {selected_fg}; }}',
         f'button:hover, row:hover {{ background-color: {c["selection"]}; color: {selected_fg}; }}',
         f'entry:focus, button:focus {{ border-color: {c["accent"]}; }}',
         f'link, link:visited {{ color: {readable(c["accent"], bg)}; }}',

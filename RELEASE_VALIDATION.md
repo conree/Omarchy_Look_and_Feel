@@ -1,4 +1,35 @@
-# Release validation — updated 2026-10-29
+# Release validation — updated 2026-10-30
+
+## PCManFM selection correction — October 30, v0.3.2
+
+The original physical-host screenshot shows `version.json` selected in the status
+bar without a visible row highlight. A GTK 3 computed-style probe with the faulty
+stylesheet returned the same background RGB (11, 13, 15) and foreground RGB
+(248, 248, 242) for normal, selected, selected/focused and selected/backdrop states.
+
+The `window.background .view` surface selector outranked `*:selected`. Adding
+`window.background *:selected` to the later selection rule restores the palette's
+selection background and readable foreground. The generator and active GTK 3/4
+stylesheets received the same correction; the theme palette was unchanged.
+
+After restarting actual PCManFM 1.4.0 on the owner's Wayland desktop, accessibility
+selection and desktop captures verified a visible purple `version.json` row,
+two adjacent selected rows, and a visible selection after moving focus to Ghostty.
+The selected rows were scrolled into view before judging the screenshots. Earlier
+captures with sidebar focus or offscreen selections were not acceptance evidence.
+Final captures for this session are temporary files under `/tmp`:
+`pcmanfm-selection-focused.png`, `pcmanfm-selection-multiple.png`, and
+`pcmanfm-selection-inactive.png`; they are not public release assets.
+
+`python -B tests/check_portable_appearance.py` passed on the corrected generator.
+An independent reviewer checked the generator diff, both active stylesheets,
+selector specificity and the unchanged scoped surface rules. The earlier live
+Ghostty opacity evidence below remains historical; opacity was not retested for
+this selection-only change. GTK 4 rendering and other themes/apps were not tested
+live. The version-label and documentation changes add no runtime behaviour.
+
+Remote inspection confirmed that public `main` and `v0.3.1` both identified
+`eba0133618fc401a1e6c265dfcbcc7454e856623`, whose generator contains the defect.
 
 ## Live transparency correction — October 29
 

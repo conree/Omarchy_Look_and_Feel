@@ -1,5 +1,17 @@
 # Project status
 
+## Current: v0.3.2 selection fix — October 30
+
+The PCManFM selection-highlight defect is corrected in the GTK palette generator.
+Physical-host single, multiple and unfocused selections passed with Dracula Pro
+Van Helsing unchanged. Independent source review and the portable-appearance
+regression passed; see [release validation](RELEASE_VALIDATION.md).
+The owner authorized committing, pushing and publishing v0.3.2. Its Git tag and
+GitHub release identify the published revision. The earlier entries below retain
+historical scope and are not the current publication status.
+
+## Historical work
+
 October 29 local change: Appearance now has a separate Terminal opacity dropdown
 below the theme choices (keep current, or 0–100% in 5% steps). It uses independent
 policy ownership, Apply, automatic repair and Undo across the five supported

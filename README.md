@@ -6,18 +6,19 @@ Bring supported GTK, Qt and terminal apps together with shared themes and fonts.
 Choose light and dark themes, terminal opacity and blur, backgrounds and icons—all from one place.
 Changes are journalled, with separate **Undo** controls for each section.
 
-Version **0.3.1** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+Version **0.3.2** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
-## What's changed in 0.3.1
+## What's changed in 0.3.2
 
-- Choose whether to automatically repair managed appearance settings. Turning
-  repair off also pauses sunrise/sunset switching and background status checks.
-- See clearer guidance on closing or reopening applications and signing in again
-  when Qt integration changes.
-- The panel requests Montserrat, falling back if it is not installed. Font
-  samples show their selected fonts; unsupported glyphs use fallbacks.
-  Explanatory text wraps in the left column.
-- Updated the Marketplace description and preview.
+- Restore visible selected rows in PCManFM and affected GTK views. The plugin's
+  generated background rule could override the selection colour, making selected
+  files look unselected. This was a plugin CSS precedence bug, not a Dracula
+  palette defect.
+- After updating, apply your Appearance theme again, then fully quit and reopen
+  PCManFM to load the corrected stylesheet. Closing a window may leave its
+  process running.
+
+See [the 0.3.2 release notes](RELEASE_NOTES_0.3.2.md) for verification and scope.
 
 > **Automatic repair:** by default, after you apply a choice, the loaded plugin checks saved
 > themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and
