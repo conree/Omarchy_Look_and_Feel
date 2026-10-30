@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "si.omarchy-look-and-feel",
   "name": "Omarchy Look & Feel",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "author": "conree",
   "license": "MIT",
-  "description": "One Omarchy panel for fonts, themes, backgrounds, icons and verified boot artwork.",
+  "description": "Bring supported GTK, Qt and terminal apps together with shared themes and fonts.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Look & Feel",
-    "description": "Set Omarchy fonts, themes, backgrounds, and icons in one place.",
+    "description": "Coordinate themes and fonts across supported GTK, Qt and terminal apps.",
     "category": "Appearance",
     "defaultSection": "right",
     "allowMultiple": false

@@ -11,9 +11,9 @@ function readFunction(name) {
   throw Error('Incomplete ' + name);
 }
 const queue = [];
-const root = {auditGeneration: 0, auditRefreshPending: false, reconciliationPending: [], reconciliationFailed: false, reconciliationMessage: '', sectionGeneration: {fonts: 0, theme: 0, opacity: 0, icons: 0, blur: 0}, reconciliationOwners: {}};
+const root = {repairSettingLoaded: true, repairEnabled: true, auditGeneration: 0, auditRefreshPending: false, reconciliationPending: [], reconciliationFailed: false, reconciliationMessage: '', sectionGeneration: {fonts: 0, theme: 0, opacity: 0, icons: 0, blur: 0}, reconciliationOwners: {}};
 const processState = {running: false, started: true, handled: false, exitSeen: true, stdoutFinished: true, stderrFinished: true, resultExitCode: 0, errorText: '', auditGeneration: 0, sectionGeneration: {fonts: 0, theme: 0, opacity: 0, icons: 0, blur: 0}};
-const context = {root, reconcileProcess: processState, panelLoader: {item: null}, Qt: {callLater: fn => queue.push(fn)}};
+const context = {root, repairSettingProcess: {running: false}, reconcileProcess: processState, panelLoader: {item: null}, Qt: {callLater: fn => queue.push(fn)}};
 vm.createContext(context);
 for (const name of ['tryReconcile', 'auditRegistryChanged', 'sectionApplied', 'isAuditAttention', 'finishReconciliation']) {
   root[name] = vm.runInContext('(' + readFunction(name) + ')', context);
@@ -120,3 +120,12 @@ for (const registry of [null, {unsupportedCount: 1}, {unsupportedCount: 0}]) {
   assert.equal(cleared, registry && registry.unsupportedCount === 0 ? 2 : 1);
 }
 console.log('Reconciliation generation: stale warning filtered, unrelated notices retained, fresh audits and busy guard passed.');
+processState.running = false; processState.handled = true;
+root.repairEnabled = false;
+root.tryReconcile();
+assert(!processState.running, 'disabled repair must not start reconciliation');
+processState.handled = false;
+processState.outputText = JSON.stringify({schemaVersion: 1, skipped: 'disabled'});
+root.reconciliationFailed = false;
+root.finishReconciliation();
+assert(!root.reconciliationFailed, 'disabled result must not be reported as an error');

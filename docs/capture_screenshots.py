@@ -57,7 +57,9 @@ Window {
     id: root; objectName: "root"; anchors.fill: parent
     property var bar: null
     property bool opened: true
+    QtObject { id: sampleHost; property bool repairEnabled: true; property bool repairSettingLoaded: true; property string repairSettingError: "" }
 ''' + body + '\n  }\n}\n'
+    qml = qml.replace('property var hostWidget: null', 'property var hostWidget: sampleHost')
     omarchy = Path(os.environ.get('OMARCHY_PATH', '/usr/share/omarchy'))
     themes = []
     for name, label in [('catppuccin-latte', 'Catppuccin Latte'), ('catppuccin', 'Catppuccin')]:

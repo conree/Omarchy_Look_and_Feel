@@ -1,17 +1,30 @@
 # Omarchy Look & Feel
 
-One panel to make supported GTK, Qt and terminal apps follow your Omarchy theme.
-Choose fonts, light/dark themes, terminal opacity and blur, backgrounds and icons, then press **Apply changes**.
+**One panel to rule them all.**
+
+Bring supported GTK, Qt and terminal apps together with shared themes and fonts.
+Choose light and dark themes, terminal opacity and blur, backgrounds and icons—all from one place.
 Changes are journalled, with separate **Undo** controls for each section.
 
-Version **0.3.0** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+Version **0.3.1** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
-> **Automatic repair:** after you apply a choice, the loaded plugin checks saved
+## What's changed in 0.3.1
+
+- Choose whether to automatically repair managed appearance settings. Turning
+  repair off also pauses sunrise/sunset switching and background status checks.
+- See clearer guidance on closing or reopening applications and signing in again
+  when Qt integration changes.
+- The panel requests Montserrat, falling back if it is not installed. Font
+  samples show their selected fonts; unsupported glyphs use fallbacks.
+  Explanatory text wraps in the left column.
+- Updated the Marketplace description and preview.
+
+> **Automatic repair:** by default, after you apply a choice, the loaded plugin checks saved
 > themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and
 > even with the panel closed. **Hand edits to managed settings can be overwritten.**
-> Undo the relevant choices or [disable the plugin](#undo-or-stop-managing-appearance)
-> before managing those settings by hand. Background and boot artwork are not
-> periodically reapplied.
+> Turn **Automatic repair** off in Appearance to pause repair and sunrise/sunset
+> switching. The shell font binding remains active and background status checks
+> pause. Background and boot artwork are not periodically reapplied.
 
 ![Appearance tab with light and dark application and terminal previews](docs/screenshots/appearance.png)
 
@@ -49,8 +62,8 @@ or custom Omarchy builds may lack required theme-generation capabilities.
 
 ## First use
 
-Save your work and close all open applications before applying changes via the
-Look & Feel plugin. Reopen them after applying the changes.
+Save your work before applying changes. Some apps need to close for profile
+updates or reopen to show changes; check **Applications** for specific actions.
 
 The plugin discovers installed fonts through Fontconfig and themes from the
 Omarchy theme directories, including `~/.config/omarchy/themes/`. Backgrounds
@@ -72,7 +85,7 @@ catalogs](#live-appearance-catalogs) for the full locations.
    when you need the full message.
 
 If Qt integration needs activation, save your work, sign out and back in once,
-then reopen applications. Close Brave, Typora and OnlyOffice when requested for
+then reopen applications. Close Brave, Betterbird, Typora and OnlyOffice when requested for
 profile changes, and keep them closed until Apply or Undo finishes.
 
 A failed step stops later steps. Completed steps remain applied and can be
@@ -100,15 +113,19 @@ still follow their native transparency rules. Unsupported custom configuration
 syntax is refused. Undo merges preserve unrelated settings; an empty section
 header can remain when another setting was changed after Apply.
 
-To stop automatic repair and keep the current application settings:
+To stop automatic repair and keep the current application settings, turn off
+**Automatic repair** in Appearance. Sunrise/sunset switching and background
+status checks pause as well. The shell font binding remains active; explicit
+Apply and Undo can still change settings. You can also disable the plugin:
 
 ```sh
 omarchy plugin disable si.omarchy-look-and-feel
 ```
 
 Disabling also releases the shell font binding. It does **not** restore other
-application settings or erase saved choices. Re-enabling resumes saved choices.
-There is no separate repair-only switch; closing the panel does not stop repair.
+application settings or erase saved choices. Re-enabling resumes saved choices
+only if automatic repair remains on.
+Closing the panel does not stop repair while it is enabled.
 
 Update with `omarchy plugin update si.omarchy-look-and-feel`.
 To uninstall, use `omarchy plugin remove si.omarchy-look-and-feel`.
@@ -215,10 +232,13 @@ The plugin saves the chosen fonts and light/dark themes in one desired-state
 file: `~/.config/omarchy-look-and-feel/policy.json` (or its XDG equivalent).
 Apply generates configuration from the selected palette and detected application
 interfaces. No Alucard, Van Helsing, user name, or particular font is required.
-The bar checks saved choices immediately on load and every 15 seconds while
-loaded, in Light, Dark and Automatic modes, even with the panel closed. It
+When automatic repair is on (the default), the bar checks saved choices immediately
+on load and every 15 seconds while loaded, in Light, Dark and Automatic modes, even with the panel closed. It
 repairs supported configuration drift, including hand edits to managed values.
-Automatic mode also follows the solar phase. Themes, fonts and icons are managed;
+Automatic mode also follows the solar phase while repair is on. Turning repair
+off pauses drift correction, sunrise/sunset switching and background status
+checks; the shell font binding remains active. Explicit Apply and Undo still
+work. Themes, fonts and icons are managed;
 background and boot artwork are excluded from periodic repair. It does
 nothing to appearance until a choice has been applied. Background is applied
 separately. An installed icon theme can be applied independently across desktop,

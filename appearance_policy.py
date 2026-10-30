@@ -22,6 +22,25 @@ LABEL_THEME = 'Theme settings'
 LABEL_FONTS = 'Global font settings'
 
 
+def repair_enabled():
+    path = tx._ensure_home_path(tx._home() / tx.FILE_TARGETS['appearance-policy'], allow_missing_parents=True).parent / 'repair.json'
+    path = tx._ensure_home_path(path, allow_missing_parents=True)
+    try:
+        data = json.loads(path.read_text())
+    except FileNotFoundError:
+        return True
+    if not isinstance(data, dict) or set(data) != {'enabled'} or type(data['enabled']) is not bool:
+        raise ValueError('Invalid automatic repair setting')
+    return data['enabled']
+
+
+def set_repair_enabled(enabled):
+    path = tx._ensure_home_path(tx._home() / tx.FILE_TARGETS['appearance-policy'], allow_missing_parents=True).parent / 'repair.json'
+    tx._mkdir_private(path.parent)
+    path = tx._ensure_home_path(path)
+    tx._atomic_write(path, json.dumps({'enabled': enabled}).encode() + b'\n', 0o600)
+
+
 def validate(data):
     if (not isinstance(data, dict) or data.get('schemaVersion') != 1
             or not {'schemaVersion', 'fonts', 'theme', 'background'} <= set(data)
@@ -234,7 +253,7 @@ def apply_theme(mode, light, dark, *, automatic=False):
         plan.wait(name, 'reload', 'Settings saved, but the running terminal could not be refreshed; reopen it or retry Apply.')
     outcome.update(applicationTransaction=transaction_id, pendingApplications=plan.pending,
                    configuredSurfaces=plan.surfaces, selectionReason=reason,
-                   automaticFutureSwitching='while-plugin-loaded', renderedAppearanceVerified=False,
+                   automaticFutureSwitching='while-plugin-loaded-and-repair-enabled', renderedAppearanceVerified=False,
                    undoAvailable=True)
     return outcome
 

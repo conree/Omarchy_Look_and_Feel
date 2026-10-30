@@ -21,12 +21,14 @@ Panel {
   property var anchorItem: null
   property var hostWidget: null
   readonly property var barIdentity: hostWidget || root
-  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  readonly property string fontFamily: "Montserrat"
   readonly property int selectorHeight: Math.round(Style.font.body * 1.95)
   // Style.font values are logical pixels throughout this panel. Using
   // pointSize here scaled controls larger than adjacent text and widened
   // the action rows enough to squeeze their explanatory text.
   readonly property int controlFontPixelSize: Math.round(Style.font.body)
+  // Match the start of the dark theme column; use the full width when stacked.
+  readonly property real textColumnWidth: content.width < 620 ? content.width : (content.width + 20) / 2
   property var fonts: []
   property bool onlyMonospacedTerminalFonts: false
   readonly property var terminalFonts: onlyMonospacedTerminalFonts
@@ -769,7 +771,7 @@ Panel {
     }
     indicator: Text {
       x: picker.width - width - 12; y: (picker.height - height) / 2
-      text: "⌄"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize
+      text: "⌄"; color: root.mutedColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize
     }
     delegate: Controls.ItemDelegate {
       required property var modelData
@@ -817,14 +819,14 @@ Panel {
     RowLayout {
       Layout.fillWidth: true
       Caption {
-        Layout.fillWidth: true
+        Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth
         text: notice.result.state === "working" ? "Saving settings…" : notice.result.state === "error" ? "Last action: could not complete" : notice.result.state === "pending" ? "Last action: saved · attention needed" : "Last action: settings saved"
         color: notice.result.state === "error" || notice.result.state === "pending" ? root.warningColor : root.mutedColor
         font.pixelSize: Math.max(11, root.controlFontPixelSize - 1)
       }
       ActionButton { quiet: true; text: notice.expanded ? "Hide details" : "Details"; onClicked: notice.expanded = !notice.expanded }
     }
-    Caption { Layout.fillWidth: true; visible: notice.expanded; text: notice.result.detail || ""; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 1) }
+    Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; visible: notice.expanded; text: notice.result.detail || ""; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 1) }
   }
   component ThemeSampleText: Text {
     required property var sample
@@ -1015,7 +1017,7 @@ Panel {
         color: monoFilter.checked ? root.accentColor : root.surfaceColor
         border.color: monoFilter.activeFocus || monoFilter.checked ? root.accentColor : root.mutedColor
         border.width: monoFilter.activeFocus ? 2 : 1
-        Text { anchors.centerIn: parent; text: "✓"; visible: monoFilter.checked; color: root.popupBackground; font.pixelSize: 14; font.bold: true }
+        Text { anchors.centerIn: parent; text: "✓"; visible: monoFilter.checked; color: root.popupBackground; font.family: root.fontFamily; font.pixelSize: 14; font.bold: true }
       }
       contentItem: Text { text: parent.text; font: parent.font; color: root.popupForeground; leftPadding: parent.indicator.width + 8; verticalAlignment: Text.AlignVCenter }
     }
@@ -1079,7 +1081,7 @@ Panel {
               spacing: 6
               Text { text: "Look"; color: root.brandColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
               Text { text: "& Feel"; color: root.accentColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
-              Caption { text: "v0.3.0"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
+              Caption { text: "v0.3.1"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
             }
             Caption { text: "Your desktop, in one place"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
           }
@@ -1129,7 +1131,14 @@ Panel {
                 ThemeChoice { light: true; heading: "Light theme" }
                 ThemeChoice { light: false; heading: "Dark theme" }
               }
-              Caption { Layout.fillWidth: true; text: "Automatic follows local sunrise and sunset."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; visible: root.selectedThemeMode === "automatic" }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Automatic follows local sunrise and sunset while automatic repair is on."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; visible: root.selectedThemeMode === "automatic" }
+              RowLayout {
+                Layout.fillWidth: true
+                FieldLabel { text: "Automatic repair"; Layout.fillWidth: true }
+                ActionButton { objectName: "repairToggle"; text: root.hostWidget && root.hostWidget.repairEnabled ? "On" : "Off"; selected: root.hostWidget && root.hostWidget.repairEnabled; enabled: !!root.hostWidget && root.hostWidget.repairSettingLoaded; Accessible.name: "Toggle automatic repair"; onClicked: root.hostWidget.setRepairEnabled(!root.hostWidget.repairEnabled) }
+              }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "On: repair managed settings and follow sunrise/sunset. Off: pause repair and day/night switching; the shell font binding stays active. Background status checks also pause."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; visible: !!root.hostWidget && !!root.hostWidget.repairSettingError; text: root.hostWidget ? root.hostWidget.repairSettingError : ""; color: root.warningColor }
               ColumnLayout {
                 Layout.fillWidth: true; spacing: 8
                 GridLayout {
@@ -1174,7 +1183,7 @@ Panel {
                 }
                 Caption {
                   Layout.fillWidth: true
-                  Layout.maximumWidth: terminalBlurColumn.x + terminalBlurPicker.width
+                  Layout.maximumWidth: Math.min(root.textColumnWidth, terminalBlurColumn.x + terminalBlurPicker.width)
                   Layout.alignment: Qt.AlignLeft
                   color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2
                   text: "70% opacity means 30% transparency. Blur softens the background behind terminals. Coloured prompt backgrounds stay opaque."
@@ -1266,32 +1275,32 @@ Panel {
                   ActionButton { text: "Recover boot artwork"; quiet: true; visible: !!(root.appearanceActionStatuses.unlock || {}).recoveryAvailable; onClicked: root.runAppearanceAction("unlock", ["recover-unlock"]) }
                 }
                 ResultNotice { Layout.fillWidth: true; kind: "unlock" }
-                Caption { Layout.fillWidth: true; text: "Applying or undoing boot artwork requires administrator approval."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+                Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Applying or undoing boot artwork requires administrator approval."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               }
             }
             ColumnLayout {
               objectName: "fontsPage"
               width: parent.width; visible: root.activeTab === 1; enabled: root.inventoryLoaded && !root.busy; spacing: 18
-              Caption { Layout.fillWidth: true; text: "Two fonts. One consistent desktop."; color: root.mutedColor }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Two fonts. One consistent desktop."; color: root.mutedColor }
               GridLayout { Layout.fillWidth: true; columns: width < 620 ? 1 : 2; uniformCellWidths: true; columnSpacing: 24; rowSpacing: 24; FontChoice { terminal: false } FontChoice { terminal: true } }
               Divider {}
-              Caption { Layout.fillWidth: true; text: "Font changes may require reopening applications."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Font changes may require reopening applications."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               ResultNotice { Layout.fillWidth: true; kind: "fonts" }
             }
             ColumnLayout {
               objectName: "applicationsPage"
               width: parent.width; visible: root.activeTab === 2; spacing: 16
-              FieldLabel { Layout.fillWidth: true; text: "Audit Applications not Automatically Configured by the Plugin" }
+              FieldLabel { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Audit Applications not Automatically Configured by the Plugin" }
               RowLayout {
                 Layout.fillWidth: true
                 SearchField { id: manualAppField; Layout.fillWidth: true; enabled: !root.busy; placeholderText: "App name, launcher, or package"; text: root.manualAppQuery; onTextEdited: { root.manualAppQuery = text; root.manualAppStatus = "" } onAccepted: root.inspectManualApp(); Accessible.name: "Application to audit" }
                 ActionButton { text: root.manualAppActionRunning ? "Auditing…" : "Audit app"; enabled: !root.busy && root.manualAppQuery.trim().length >= 2; onClicked: root.inspectManualApp() }
               }
-              Caption { Layout.fillWidth: true; visible: !!root.manualAppStatus; text: root.manualAppStatus; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; visible: !!root.manualAppStatus; text: root.manualAppStatus; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               ActionButton { text: "Clear Audits"; quiet: true; enabled: !root.busy; onClicked: root.clearManualAudit() }
               Divider {}
               FieldLabel { text: root.attentionItems.length ? "Needs your attention" : "Application settings" }
-              Caption { Layout.fillWidth: true; visible: !root.attentionItems.length; text: "No pending actions reported. Saved settings do not verify each application's appearance."; color: root.mutedColor }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; visible: !root.attentionItems.length; text: "No pending actions reported. Saved settings do not verify each application's appearance."; color: root.mutedColor }
               Repeater {
                 model: root.attentionItems
                 Rectangle {
@@ -1300,19 +1309,20 @@ Panel {
                   color: root.surfaceColor; border.color: root.lineColor; radius: 3
                   ColumnLayout {
                     id: attentionRow; anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 10; spacing: 5
-                    Caption { Layout.fillWidth: true; text: modelData.app + " · " + root.actionTitle(modelData.action); color: root.warningColor; font.weight: Font.Medium }
-                    Caption { Layout.fillWidth: true; text: modelData.reason; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+                    Caption { Layout.fillWidth: true; Layout.maximumWidth: Math.max(0, root.textColumnWidth - 10); text: modelData.app + " · " + root.actionTitle(modelData.action); color: root.warningColor; font.weight: Font.Medium }
+                    Caption { Layout.fillWidth: true; Layout.maximumWidth: Math.max(0, root.textColumnWidth - 10); text: modelData.reason; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
                   }
                 }
               }
-              Caption { Layout.fillWidth: true; visible: !!root.globalApplyStatus; text: root.globalApplyStatus; color: root.applyFailed ? root.warningColor : root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; visible: !!root.globalApplyStatus; text: root.globalApplyStatus; color: root.applyFailed ? root.warningColor : root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
             }
           }
         }
         Divider {}
         Caption {
           Layout.fillWidth: true
-          text: "Save your work and close all open applications before applying changes via the Look & Feel plugin."
+          Layout.maximumWidth: Math.min(root.textColumnWidth, footerStatus.width)
+          text: "Save your work. Check Applications for apps to close or reopen and any sign-in needed."
           color: root.mutedColor
           font.pixelSize: root.controlFontPixelSize - 2
         }
@@ -1321,7 +1331,8 @@ Panel {
           objectName: "panelFooter"
           Layout.fillWidth: true; spacing: 12
           ColumnLayout {
-            Layout.fillWidth: true; spacing: 4
+            id: footerStatus
+            Layout.preferredWidth: root.textColumnWidth; Layout.minimumWidth: 0; Layout.maximumWidth: root.textColumnWidth; spacing: 4
             Caption {
               Layout.fillWidth: true
               text: !root.inventoryLoaded && !root.inventoryError ? "Loading settings…" : root.globalApplyRunning ? root.globalApplyStatus : root.applyFailed ? (root.globalApplyCurrentStep ? "Apply stopped at " + root.globalApplyStepName(root.globalApplyCurrentStep) : "Choose the missing settings") : root.attentionItems.length ? root.attentionItems.length + " action" + (root.attentionItems.length === 1 ? " needs" : "s need") + " attention" : root.globalApplyStatus ? "Last Apply: settings saved" : "Ready when you are"
@@ -1330,12 +1341,14 @@ Panel {
             }
             Caption { Layout.fillWidth: true; text: root.globalApplyRunning ? "Completed steps remain saved if a later step stops." : "Apply saves choices across all three tabs."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
           }
+          Item { Layout.fillWidth: true }
           ActionButton { text: "Review"; quiet: true; visible: root.attentionItems.length > 0 || root.applyFailed; onClicked: root.selectTab(2) }
           ActionButton { objectName: "applyChangesButton"; text: root.globalApplyRunning ? "Applying…" : "Apply changes"; primary: true; enabled: !root.busy && root.inventoryLoaded; onClicked: root.applyAllSelectedSettings() }
         }
       }
 
       Controls.Dialog {
+        font.family: root.fontFamily
         palette.window: root.popupBackground
         palette.base: root.popupBackground
         palette.alternateBase: Qt.tint(root.popupBackground, Qt.rgba(root.popupForeground.r, root.popupForeground.g, root.popupForeground.b, 0.06))
@@ -1378,7 +1391,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Save your work and close all open applications before applying changes via the Look & Feel plugin. Reopen them after applying the changes. Use Appearance, Fonts and Applications to review your choices. Switching tabs keeps your draft selections. The Apply changes button stays below the scrolling content and applies selections from every tab: theme, selected terminal opacity, fonts, background, then optional icons. A changed boot artwork selection is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message. Applications lists any remaining actions."
+              text: "Save your work before applying. Close requested applications and keep them closed while applying profile changes. Some apps need reopening; Qt integration may require signing out and back in. Check Applications for pending actions. Switching tabs keeps your draft selections. Apply changes uses selections from every tab. Changed boot artwork is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1410,7 +1423,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Choose Automatic, Light or Dark mode on the Appearance tab. Automatic follows local sunrise and sunset. Terminal opacity applies separately to installed Ghostty, Alacritty, Kitty, Foot and WezTerm. Choose a percentage, then Apply changes. 100% is opaque; 70% is 30% transparent. Coloured prompt backgrounds remain opaque. Foot and Kitty may need to be fully quit and reopened. Undo opacity restores previous opacity settings independently of fonts and themes. In every mode, the loaded plugin checks saved themes, fonts, icons and opacity on startup and every 15 seconds, even with the panel closed. Hand edits to managed settings can be replaced. Undo the relevant choices, or disable the plugin to stop repair. Undo theme restores the previous detected theme."
+              text: "Choose Automatic, Light or Dark mode on the Appearance tab. With automatic repair on, Automatic follows local sunrise and sunset. Terminal opacity applies separately to installed Ghostty, Alacritty, Kitty, Foot and WezTerm. 100% is opaque; 70% is 30% transparent. Coloured prompt backgrounds remain opaque. Foot and Kitty may need to be fully quit and reopened. Automatic repair checks managed settings on startup and every 15 seconds, even with the panel closed, and may overwrite hand edits. Turning it off pauses repair, sunrise/sunset switching and background status checks; the shell font binding stays active. Undo theme restores the previous detected theme."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize

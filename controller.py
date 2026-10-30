@@ -829,7 +829,7 @@ def write_action_result(result):
 
 
 def main(argv: list[str]) -> int:
-    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-opacity", "apply-blur", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile"}
+    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-opacity", "apply-blur", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile", "set-repair"}
     if not mutation:
         return _main(argv)
     import appearance_policy
@@ -838,6 +838,8 @@ def main(argv: list[str]) -> int:
             from managed_preferences import AUTOMATIC
             token = AUTOMATIC.set(argv == ["reconcile"])
             try:
+                if argv[0] == 'set-repair' or (argv == ['reconcile'] and not appearance_policy.repair_enabled()):
+                    return _main(argv)
                 import requirements
                 if argv[0] == "apply-global-fonts":
                     requirements.require('fonts')
@@ -877,6 +879,11 @@ def main(argv: list[str]) -> int:
 
 
 def _main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[0] == 'set-repair' and argv[1] in ('on', 'off'):
+        import appearance_policy
+        appearance_policy.set_repair_enabled(argv[1] == 'on')
+        print(json.dumps({'enabled': argv[1] == 'on'}))
+        return 0
     if argv == ["recover-unlock"]:
         import boot_unlock
         json.dump(boot_unlock.recover(), sys.stdout)
@@ -892,6 +899,9 @@ def _main(argv: list[str]) -> int:
 
     if argv == ["reconcile"]:
         import appearance_policy
+        if not appearance_policy.repair_enabled():
+            print(json.dumps({'schemaVersion': 1, 'skipped': 'disabled'}))
+            return 0
         json.dump(appearance_policy.reconcile(), sys.stdout, ensure_ascii=False, sort_keys=True)
         sys.stdout.write("\n")
         return 0

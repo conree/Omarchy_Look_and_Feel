@@ -25,6 +25,41 @@ BarWidget {
   }
   property bool shellFontOwned: false
   property string savedShellFont: ""
+  property bool repairEnabled: true
+  property bool repairSettingLoaded: false
+  property string repairSettingError: ""
+
+  function setRepairEnabled(enabled) {
+    if (repairSettingProcess.running) return
+    repairSettingError = ""
+    repairSettingProcess.command = ["/usr/bin/python3", "-B", decodeURIComponent(String(Qt.resolvedUrl("controller.py")).replace(/^file:\/\//, "")), "set-repair", enabled ? "on" : "off"]
+    repairSettingProcess.running = true
+  }
+
+  FileView {
+    id: repairSetting
+    path: root.appearanceConfigDir + "repair.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try {
+        var value = JSON.parse(text())
+        if (typeof value.enabled !== "boolean") throw new Error("Invalid setting")
+        root.repairEnabled = value.enabled
+        root.repairSettingError = ""
+      } catch (e) { root.repairEnabled = false; root.repairSettingError = "Could not read automatic repair setting." }
+      root.repairSettingLoaded = true
+    }
+    onLoadFailed: { root.repairEnabled = true; root.repairSettingLoaded = true }
+  }
+  Process {
+    id: repairSettingProcess
+    onExited: function(code) {
+      if (code !== 0) root.repairSettingError = "Could not save automatic repair setting."
+      else repairSetting.reload()
+    }
+  }
 
   // Omarchy defaults to its monospace alias. Bind the shared shell interface
   // directly while this plugin owns fonts; no optional font plugin is needed.
@@ -64,13 +99,14 @@ BarWidget {
 
   Timer {
     interval: 15000
-    running: true
+    running: root.repairSettingLoaded && root.repairEnabled
     repeat: true
     triggeredOnStart: true
     onTriggered: root.tryReconcile()
   }
 
   function tryReconcile() {
+    if (!root.repairSettingLoaded || !root.repairEnabled || repairSettingProcess.running) return
     var panel = panelLoader.item
     if (reconcileProcess.running || (reconcileProcess.started && !reconcileProcess.handled)
         || (panel && (panel.globalApplyRunning || panel.appearanceActionRunning || panel.fontActionRunning
@@ -119,6 +155,7 @@ BarWidget {
     }
     try {
       var result = JSON.parse(reconcileProcess.outputText)
+      if (result.schemaVersion === 1 && result.skipped === "disabled") return
       if (result.schemaVersion === 1 && result.skipped === "busy") {
         if (root.auditRefreshPending) Qt.callLater(root.tryReconcile)
         return
@@ -282,6 +319,7 @@ BarWidget {
 
   WidgetButton {
     id: button
+    fontFamily: "Montserrat"
     anchors.fill: parent
     bar: root.bar
     text: "󰏘"
