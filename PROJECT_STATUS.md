@@ -1,6 +1,15 @@
 # Project status
 
-## Current: v0.3.2 selection fix — October 30
+## Current: v0.3.3 bug fixes — November 1
+
+Fonts layout, stale pending-font notices and Apply guidance are corrected.
+The owner accepted the final combined footer beside APPLY CHANGES and authorized
+a handoff, commit and push as "bug fixes" for v0.3.3. The manifest, visible version
+and release notes identify this revision; Git main and the v0.3.3 tag identify
+its publication state. See [release notes](RELEASE_NOTES_0.3.3.md) and
+[validation](RELEASE_VALIDATION.md) for evidence and limits.
+
+## Previous: v0.3.2 selection fix — October 30
 
 The PCManFM selection-highlight defect is corrected in the GTK palette generator.
 Physical-host single, multiple and unfocused selections passed with Dracula Pro

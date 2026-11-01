@@ -383,7 +383,7 @@ test('structured results distinguish working, saved, pending and failed operatio
   assert(attention.some(item => item.app === 'Qt' && item.action === 'login'));
   assert(attention.some(item => item.app === 'Background' && item.action === 'error'));
   assert.equal(f.root.actionTitle('login'), 'Sign out and back in');
-  assert.equal(f.root.actionTitle('apply-when-closed'), 'Close, then Apply again');
+  assert.equal(f.root.actionTitle('apply-when-closed'), 'Close, then click APPLY CHANGES');
 });
 
 test('attention merges reconciliation results and clears resolved section pending work', () => {
@@ -554,7 +554,7 @@ test('clearing audits removes only the old audit-blocked error', () => {
   f.root.clearAuditAttention();
   assert.equal(f.root.sectionResults.fonts.state, '');
   assert.equal(f.root.applyFailed, false);
-  assert(f.root.globalApplyStatus.includes('Apply changes again'));
+  assert(f.root.globalApplyStatus.includes('APPLY CHANGES again'));
 });
 
 test('successful re-audit retains previous attention until reconciliation confirms it', () => {

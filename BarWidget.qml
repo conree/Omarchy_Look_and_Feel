@@ -209,6 +209,24 @@ BarWidget {
           && typeof panel.clearAuditAttention === "function") panel.clearAuditAttention(false)
       root.reconciliationPending = result.pendingApplications
       root.reconciliationOwners = owners
+      if (panel && staleSections.indexOf("fonts") < 0
+          && reconcileProcess.auditGeneration === root.auditGeneration
+          && fontResult && !fontResult.blocked && Array.isArray(fontResult.pendingApplications)
+          && Array.isArray(attributed.fonts)) {
+        // Replace the panel's Apply snapshot only after a current successful
+        // font check. A closed mail profile may have been repaired meanwhile.
+        panel.updatePending("fonts", { pendingApplications: attributed.fonts })
+        panel.fontActionNeedsAttention = attributed.fonts.length > 0
+        if ((panel.sectionResults.fonts || {}).state === "pending") {
+          panel.fontActionStatus = panel.fontActionNeedsAttention
+            ? attributed.fonts.map(function(item) { return item.app + ": " + item.reason }).join("\n")
+            : "Saved font settings checked. No font actions are pending."
+          panel.setSectionResult("fonts", panel.fontActionNeedsAttention ? "pending" : "saved", panel.fontActionStatus)
+        }
+        if (!panel.attentionItems.length
+            && panel.globalApplyStatus === "Settings saved. Some applications need attention; see Applications.")
+          panel.globalApplyStatus = "Settings saved."
+      }
       var opacity = (result.results || {}).opacity
       if (panel && staleSections.indexOf("opacity") < 0 && opacity && Array.isArray(opacity.pendingApplications)) {
         panel.updatePending("opacity", opacity)

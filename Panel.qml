@@ -222,8 +222,8 @@ Panel {
         root.fontActionNeedsAttention = false
         root.setSectionResult("fonts", "", "")
         if (root.globalApplyCurrentStep === "fonts" && root.globalApplyStatus.indexOf("Apply stopped at Fonts.") === 0) {
-          root.globalApplyStatus = recordsCleared ? "The audit records were cleared. Apply changes again to save your selections."
-            : "The audit was updated. Apply changes again to save your selections."
+          root.globalApplyStatus = recordsCleared ? "The audit records were cleared. Click APPLY CHANGES again to save your selections."
+            : "The audit was updated. Click APPLY CHANGES again to save your selections."
           root.applyFailed = false
         }
       }
@@ -263,9 +263,9 @@ Panel {
 
   function actionTitle(action) {
     if (action === "login") return "Sign out and back in"
-    if (action === "close-and-apply" || action === "apply-when-closed") return "Close, then Apply again"
+    if (action === "close-and-apply" || action === "apply-when-closed") return "Close, then click APPLY CHANGES"
     if (action === "reopen" || action === "reload") return "Reopen to see changes"
-    if (action === "apply-integration") return "Apply to enable integration"
+    if (action === "apply-integration") return "Click APPLY CHANGES to enable integration"
     return "Needs attention"
   }
 
@@ -999,10 +999,11 @@ Panel {
         Caption { Layout.fillWidth: true; text: choice.selectedFamily ? choice.selectedFamily + " · " + choice.selectedSize + " pt" : "Choose a font"; color: root.mutedColor; font.pixelSize: Math.max(11, root.controlFontPixelSize - 2); elide: Text.ElideRight; maximumLineCount: 1 }
       }
     }
-    RowLayout {
+    ColumnLayout {
       Layout.fillWidth: true; visible: choice.terminal
     Controls.CheckBox {
       id: monoFilter
+      Layout.fillWidth: true; Layout.minimumWidth: 0
       objectName: choice.terminal ? "monospaceFilter" : "systemMonospaceFilter"
       onActiveFocusChanged: if (activeFocus) root.revealControl(monoFilter)
       visible: choice.terminal
@@ -1019,10 +1020,9 @@ Panel {
         border.width: monoFilter.activeFocus ? 2 : 1
         Text { anchors.centerIn: parent; text: "✓"; visible: monoFilter.checked; color: root.popupBackground; font.family: root.fontFamily; font.pixelSize: 14; font.bold: true }
       }
-      contentItem: Text { text: parent.text; font: parent.font; color: root.popupForeground; leftPadding: parent.indicator.width + 8; verticalAlignment: Text.AlignVCenter }
+      contentItem: Text { text: parent.text; font: parent.font; color: root.popupForeground; leftPadding: parent.indicator.width + 8; verticalAlignment: Text.AlignVCenter; wrapMode: Text.Wrap }
     }
-      Item { Layout.fillWidth: true }
-      ActionButton { objectName: "undoFontsButton"; text: "Undo fonts"; quiet: true; visible: root.fontUndoAvailable; onClicked: root.undoGlobalFonts() }
+      ActionButton { objectName: "undoFontsButton"; text: "Undo fonts"; quiet: true; Layout.alignment: Qt.AlignRight; visible: root.fontUndoAvailable; onClicked: root.undoGlobalFonts() }
     }
   }
 
@@ -1081,7 +1081,7 @@ Panel {
               spacing: 6
               Text { text: "Look"; color: root.brandColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
               Text { text: "& Feel"; color: root.accentColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
-              Caption { text: "v0.3.2"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
+              Caption { text: "v0.3.3"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
             }
             Caption { text: "Your desktop, in one place"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
           }
@@ -1284,7 +1284,7 @@ Panel {
               Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Two fonts. One consistent desktop."; color: root.mutedColor }
               GridLayout { Layout.fillWidth: true; columns: width < 620 ? 1 : 2; uniformCellWidths: true; columnSpacing: 24; rowSpacing: 24; FontChoice { terminal: false } FontChoice { terminal: true } }
               Divider {}
-              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Font changes may require reopening applications."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Check Applications for apps that must be closed before you click APPLY CHANGES."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               ResultNotice { Layout.fillWidth: true; kind: "fonts" }
             }
             ColumnLayout {
@@ -1319,13 +1319,6 @@ Panel {
           }
         }
         Divider {}
-        Caption {
-          Layout.fillWidth: true
-          Layout.maximumWidth: Math.min(root.textColumnWidth, footerStatus.width)
-          text: "Save your work. Check Applications for apps to close or reopen and any sign-in needed."
-          color: root.mutedColor
-          font.pixelSize: root.controlFontPixelSize - 2
-        }
         RowLayout {
           id: footer
           objectName: "panelFooter"
@@ -1335,15 +1328,16 @@ Panel {
             Layout.preferredWidth: root.textColumnWidth; Layout.minimumWidth: 0; Layout.maximumWidth: root.textColumnWidth; spacing: 4
             Caption {
               Layout.fillWidth: true
-              text: !root.inventoryLoaded && !root.inventoryError ? "Loading settings…" : root.globalApplyRunning ? root.globalApplyStatus : root.applyFailed ? (root.globalApplyCurrentStep ? "Apply stopped at " + root.globalApplyStepName(root.globalApplyCurrentStep) : "Choose the missing settings") : root.attentionItems.length ? root.attentionItems.length + " action" + (root.attentionItems.length === 1 ? " needs" : "s need") + " attention" : root.globalApplyStatus ? "Last Apply: settings saved" : "Ready when you are"
+              visible: text.length > 0
+              text: !root.inventoryLoaded && !root.inventoryError ? "Loading settings…" : root.globalApplyRunning ? root.globalApplyStatus : root.applyFailed ? (root.globalApplyCurrentStep ? "Apply stopped at " + root.globalApplyStepName(root.globalApplyCurrentStep) : "Choose the missing settings") : root.attentionItems.length ? root.attentionItems.length + " action" + (root.attentionItems.length === 1 ? " needs" : "s need") + " attention" : ""
               color: root.applyFailed || root.attentionItems.length ? root.warningColor : root.popupForeground
               font.pixelSize: root.controlFontPixelSize - 1
             }
-            Caption { Layout.fillWidth: true; text: root.globalApplyRunning ? "Completed steps remain saved if a later step stops." : "Apply saves choices across all three tabs."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
+            Caption { Layout.fillWidth: true; text: root.globalApplyRunning ? "Completed steps remain saved if a later step stops." : "Save your work and close all open applications before APPLYING CHANGES. APPLY CHANGES saves your selections from all three tabs."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
           }
           Item { Layout.fillWidth: true }
           ActionButton { text: "Review"; quiet: true; visible: root.attentionItems.length > 0 || root.applyFailed; onClicked: root.selectTab(2) }
-          ActionButton { objectName: "applyChangesButton"; text: root.globalApplyRunning ? "Applying…" : "Apply changes"; primary: true; enabled: !root.busy && root.inventoryLoaded; onClicked: root.applyAllSelectedSettings() }
+          ActionButton { objectName: "applyChangesButton"; text: root.globalApplyRunning ? "Applying…" : "APPLY CHANGES"; primary: true; enabled: !root.busy && root.inventoryLoaded; onClicked: root.applyAllSelectedSettings() }
         }
       }
 
@@ -1391,7 +1385,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Save your work before applying. Close requested applications and keep them closed while applying profile changes. Some apps need reopening; Qt integration may require signing out and back in. Check Applications for pending actions. Switching tabs keeps your draft selections. Apply changes uses selections from every tab. Changed boot artwork is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message."
+              text: "Save your work before applying. For “Close, then click APPLY CHANGES”, fully close the application, click APPLY CHANGES while it remains closed, and reopen it only after the settings are saved. Do not rely on restarting the app alone to complete the pending profile update. For “Reopen to see changes”, the settings are already saved: fully quit and reopen the application. Qt integration may require signing out and back in. Check Applications for pending actions. Switching tabs keeps your draft selections. APPLY CHANGES uses selections from every tab. Changed boot artwork is applied last and requests administrator approval. If a step fails, later steps stop; completed steps remain applied and can be undone with their section's Undo control. Section results describe the last action; Details expands the full message."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1407,7 +1401,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. Apply changes uses both selections; Undo fonts restores the previous plugin font transaction. Supported running terminals receive a reload request. Some applications need to be reopened; pending actions are listed in the result. Saving configuration does not verify every application's rendered fonts. Unresolved audits do not block other font changes."
+              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. APPLY CHANGES uses both selections; Undo fonts restores the previous plugin font transaction. Supported running terminals receive a reload request. Some applications, including Betterbird when its composition fonts need updating, must be fully closed before clicking APPLY CHANGES and kept closed until it finishes. Reopen them afterward. Other applications only need reopening after settings are saved; check Applications for the required action. Saving configuration does not verify every application's rendered fonts. Unresolved audits do not block other font changes."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize
@@ -1455,7 +1449,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "Choose a background on the Appearance tab. Apply changes applies the selection; its Undo control restores the previous background."
+              text: "Choose a background on the Appearance tab. APPLY CHANGES applies the selection; its Undo control restores the previous background."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize

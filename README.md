@@ -6,19 +6,18 @@ Bring supported GTK, Qt and terminal apps together with shared themes and fonts.
 Choose light and dark themes, terminal opacity and blur, backgrounds and icons—all from one place.
 Changes are journalled, with separate **Undo** controls for each section.
 
-Version **0.3.2** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+Version **0.3.3** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
-## What's changed in 0.3.2
+## What's changed in 0.3.3 — bug fixes
 
-- Restore visible selected rows in PCManFM and affected GTK views. The plugin's
-  generated background rule could override the selection colour, making selected
-  files look unselected. This was a plugin CSS precedence bug, not a Dracula
-  palette defect.
-- After updating, apply your Appearance theme again, then fully quit and reopen
-  PCManFM to load the corrected stylesheet. Closing a window may leave its
-  process running.
+- Keep **Undo fonts** and terminal controls inside the Fonts tab.
+- Refresh old font warnings after a successful current background check.
+- Clarify that apps requiring profile updates must remain closed while you click
+  **APPLY CHANGES** and wait for settings to finish saving.
+- Combine the footer guidance beside the **APPLY CHANGES** button and remove the
+  idle status line.
 
-See [the 0.3.2 release notes](RELEASE_NOTES_0.3.2.md) for verification and scope.
+See [the 0.3.3 release notes](RELEASE_NOTES_0.3.3.md) for verification and scope.
 
 > **Automatic repair:** by default, after you apply a choice, the loaded plugin checks saved
 > themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and
@@ -63,8 +62,16 @@ or custom Omarchy builds may lack required theme-generation capabilities.
 
 ## First use
 
-Save your work before applying changes. Some apps need to close for profile
-updates or reopen to show changes; check **Applications** for specific actions.
+Save your work before applying changes. Check **Applications** for the required
+order:
+
+- **Close, then click APPLY CHANGES:** fully close the named application, click
+  **APPLY CHANGES** while it remains closed, then reopen it after the settings are saved.
+  This applies to Betterbird when its composition-font settings need updating.
+  Do not rely on restarting the app alone to complete that update.
+- **Reopen to see changes:** settings are already saved; fully quit and reopen
+  the application to load them.
+- Follow any separate sign-out/sign-in instructions shown in Applications.
 
 The plugin discovers installed fonts through Fontconfig and themes from the
 Omarchy theme directories, including `~/.config/omarchy/themes/`. Backgrounds
@@ -81,13 +88,15 @@ catalogs](#live-appearance-catalogs) for the full locations.
    terminal blur independently of opacity, using the current compositor blur strength.
    Icons are optional. Put extra wallpaper images in `~/.config/omarchy/backgrounds/`.
 3. Choose the system and terminal font families and sizes in **Fonts**.
-4. Press **Apply changes**. It uses selections from all three tabs. Check
+4. Press **APPLY CHANGES**. It uses selections from all three tabs. Check
    **Applications** for any remaining actions and expand **Details** on a result
-   when you need the full message.
+   when you need the full message. For **Close, then click APPLY CHANGES**, fully close
+   the named app and repeat **APPLY CHANGES** before reopening it.
 
 If Qt integration needs activation, save your work, sign out and back in once,
-then reopen applications. Close Brave, Betterbird, Typora and OnlyOffice when requested for
-profile changes, and keep them closed until Apply or Undo finishes.
+then reopen applications. When profile changes require closing Brave, Betterbird,
+Typora or OnlyOffice, close them **before** starting Apply or Undo and keep them
+closed until it finishes.
 
 A failed step stops later steps. Completed steps remain applied and can be
 undone from their section. Switching tabs preserves your draft choices;
@@ -170,7 +179,7 @@ Runtime previews use assets already installed by the user.
 
 ## Using the panel
 
-The panel has three tabs, with one **Apply changes** button always available
+The panel has three tabs, with one **APPLY CHANGES** button always available
 below the scrolling content. Each drop-down sits directly below its heading,
 with its example underneath. The Mode label sits beside the three mode buttons:
 
@@ -211,7 +220,7 @@ Choosing the parent **Visby CF** family instead can select its Regular face.
 
 Switching tabs, reopening the panel and refreshing the catalog preserve drafts
 while the plugin instance remains loaded. Drafts are not saved across a shell
-restart. **Apply changes** uses selections from all three tabs. Section results
+restart. **APPLY CHANGES** uses selections from all three tabs. Section results
 describe the last action; expand **Details** for the full result. Undo remains
 separate for themes, opacity, fonts, backgrounds, icons and boot artwork. Interrupted
 boot operations expose an explicit **Recover boot artwork** action. Font Undo refreshes the font
@@ -283,7 +292,7 @@ malformed records while preserving valid custom font attributes. Undo and recove
 refuse to restore a malformed saved font, including in older journals; the repaired
 settings and original journal remain available for review. Palette/icon-only Undo
 does not replace unrelated font fields. Newly enabling Qt integration is deferred
-if its existing font records are malformed: apply fonts, then Apply again.
+if its existing font records are malformed: save the font settings, then click **APPLY CHANGES** again.
 New files may leave empty directories after Undo.
 
 Keep Brave, Typora and OnlyOffice closed until an explicit profile Apply or Undo finishes.
@@ -351,7 +360,7 @@ The source of owner requirements is [`DESIGN_BRIEF.md`](DESIGN_BRIEF.md).
 - `wezterm_blocks.py`: separately owned Lua font/theme overrides; source is never executed by the adapter.
 - `theme_runtime.py`: capability-checked headless generation refresh.
 - `Panel.qml`: tabbed appearance controls, previews, built-in Help, the single
-  **Apply changes** action, Undo controls, and the missed-app audit workflow.
+  **APPLY CHANGES** action, Undo controls, and the missed-app audit workflow.
 - `boot_unlock.py` / `boot_unlock_helper.py`: explicit authenticated, staged and verified boot-artwork transactions.
 - `panel_preview_cache.py`: disposable private display cache; it never authorizes writes.
 - `appearance_previews.py`: read-only palette previews and bounded installed-icon

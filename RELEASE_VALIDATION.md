@@ -1,4 +1,33 @@
-# Release validation — updated 2026-10-30
+# Release validation — updated 2026-11-01
+
+## Fonts, warning refresh and footer — November 1, v0.3.3
+
+Live production panel screenshots verify the unclipped Undo fonts button,
+terminal controls inside the viewport, and final combined footer vertically
+centered beside APPLY CHANGES. The owner accepted the final layout. Shell restart
+was needed to load the edited QML; rescan alone displayed cached components.
+
+Betterbird's profile was read while closed. Its managed composition and sans-serif
+family matched Montserrat, and 16 CSS px matched the saved 12 pt selection.
+Reconciliation and the live Applications tab both reported no pending actions.
+The owner's subsequent screenshots confirmed that closing Betterbird, applying
+while closed, then reopening is the reliable manual workflow. Automatic repair
+may complete a pending update during a sufficiently long closed interval.
+
+The production-function reconciliation test covers no-op transaction:null success,
+retained current mail/reload work, and refusal to clear warnings from stale,
+failed, blocked or missing evidence. Existing panel interaction and font/appearance
+result checks cover adjacent paths. The final v0.3.3 run passed
+`check_panel_design.js` (30 cases), `check_reconciliation_generation.js`,
+`check_font_pending.js`, `check_font_result.js` and `check_appearance_result.js`.
+Independent review checked the source,
+regression evidence, actual managed preference values, and live screenshots.
+
+Temporary final captures: /tmp/look-feel-fonts-restarted.png,
+/tmp/look-feel-apps-verified.png and /tmp/look-feel-combined-footer.png. They may
+vanish after reboot and are not public release assets. This verifies the saved
+preferences and plugin UI, not rendered Betterbird message fonts. No fresh broad
+application, theme, display-size or opacity sweep is claimed.
 
 ## PCManFM selection correction — October 30, v0.3.2
 
