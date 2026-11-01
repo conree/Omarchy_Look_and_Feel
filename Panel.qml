@@ -1284,7 +1284,6 @@ Panel {
               Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Two fonts. One consistent desktop."; color: root.mutedColor }
               GridLayout { Layout.fillWidth: true; columns: width < 620 ? 1 : 2; uniformCellWidths: true; columnSpacing: 24; rowSpacing: 24; FontChoice { terminal: false } FontChoice { terminal: true } }
               Divider {}
-              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Check Applications for apps that must be closed before you click APPLY CHANGES."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
               ResultNotice { Layout.fillWidth: true; kind: "fonts" }
             }
             ColumnLayout {
@@ -1333,7 +1332,7 @@ Panel {
               color: root.applyFailed || root.attentionItems.length ? root.warningColor : root.popupForeground
               font.pixelSize: root.controlFontPixelSize - 1
             }
-            Caption { Layout.fillWidth: true; text: root.globalApplyRunning ? "Completed steps remain saved if a later step stops." : "Save your work and close all open applications before APPLYING CHANGES. APPLY CHANGES saves your selections from all three tabs."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
+            Caption { Layout.fillWidth: true; text: root.globalApplyRunning ? "Completed steps remain saved if a later step stops." : "Save your work and close all open applications before applying changes. APPLY CHANGES saves your selections from all three tabs."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
           }
           Item { Layout.fillWidth: true }
           ActionButton { text: "Review"; quiet: true; visible: root.attentionItems.length > 0 || root.applyFailed; onClicked: root.selectTab(2) }
