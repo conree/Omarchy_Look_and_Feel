@@ -88,6 +88,9 @@ with ExitStack() as stack:
     assert first and result['unsupportedManualCount'] == 1
     assert any(row['app'] == 'Audited applications' for row in result['pendingApplications'])
     repaired = path.read_bytes()
+    generic_path = Path.home() / tx.FILE_TARGETS['fontconfig-generics']
+    import generic_fonts
+    assert generic_path.read_bytes() == generic_fonts.build(system, chosen)
     assert unrelated.encode() in repaired
     assert match(chosen) == chosen and match(other) == other and match(system) == system
     assert match(other + ',monospace') == other
@@ -96,6 +99,7 @@ with ExitStack() as stack:
     assert automatic['transaction'] is None and automatic['unsupportedManualCount'] == 1
     tx.rollback_latest(label=policy.LABEL_FONTS)
     assert path.read_bytes() == original and match(chosen) == other
+    assert not generic_path.exists()
 
     # A bad app or unsupported terminal must not block shared settings or
     # other apps. Actual font transaction and Undo still run in this HOME.

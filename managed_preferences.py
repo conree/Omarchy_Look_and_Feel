@@ -18,12 +18,13 @@ from contextvars import ContextVar
 AUTOMATIC = ContextVar("automatic_appearance_operation", default=False)
 
 FIELDS = {
+    'omarchy-shell-style': {'font/base-size', 'flea/background-alpha'},
     'fontconfig-monospace': {'monospace-rule'},
     "hypr-qt-integration": {"integration"},
     'wezterm-config': {'fonts', 'theme', 'opacity'},
     'typora-base-user-css': {'body', 'fonts'},
     'typora-profile': {'theme', 'darkTheme', 'useSeparateDarkTheme'},
-    'appearance-policy': {'fonts', 'theme', 'background', 'icons', 'opacity', 'blur'},
+    'appearance-policy': {'fonts', 'theme', 'background', 'icons', 'opacity', 'blur', 'fleaOpacity'},
     'terminal-blur-config': {'blur'},
 }
 INI_FIELDS = {
@@ -89,6 +90,9 @@ def _unique(pairs):
 
 
 def decode(target, raw):
+    if target == 'omarchy-shell-style':
+        from shell_preferences import decode as decode_shell
+        return decode_shell(raw)
     if target == 'terminal-blur-config':
         from blur_actions import decode as decode_blur
         return decode_blur(raw)
@@ -133,6 +137,9 @@ def decode(target, raw):
 
 
 def encode(target, data):
+    if target == 'omarchy-shell-style':
+        from shell_preferences import encode as encode_shell
+        return encode_shell(data)
     if target == 'terminal-blur-config':
         from blur_actions import encode as encode_blur
         return encode_blur(data)
@@ -182,6 +189,10 @@ def edits(target, before, after, *, owned_fields=None):
     if target == 'terminal-blur-config':
         changes.setdefault('blur', {'before': [old['blur']] if 'blur' in old else [],
                                     'after': [new['blur']]})
+    if target == 'omarchy-shell-style':
+        for key in owner:
+            changes.setdefault(key, {'before': [old[key]] if key in old else [],
+                                     'after': [new[key]] if key in new else []})
     from terminal_preferences import OPACITY_FIELDS
     # Preserve the first Apply's baseline even if opacity was already correct.
     # Automatic repair must belong to that baseline, never to intervening drift.

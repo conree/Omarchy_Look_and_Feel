@@ -58,6 +58,7 @@ Panel {
   property int selectedTerminalSize: 12
   property string selectedThemeMode: "automatic"
   property int selectedOpacity: -1
+  property int selectedFleaOpacity: -1
   property string selectedBlur: "keep"
   property var blurChoices: [{ id: "keep", name: "Keep current settings" },
     { id: "off", name: "Off" }, { id: "on", name: "On" }]
@@ -93,6 +94,7 @@ Panel {
   property bool fontActionNeedsAttention: false
   property bool themeActionNeedsAttention: false
   property bool opacityActionNeedsAttention: false
+  property bool fleaOpacityActionNeedsAttention: false
   readonly property bool unlockApplyAvailable: root.inventoryLoaded && !!(root.appearanceActionStatuses.unlock || {}).applyAvailable
   property bool globalApplyRunning: false
   property string globalApplyStatus: ""
@@ -238,13 +240,13 @@ Panel {
       }
     } catch (e) { /* No previous font result to update. */ }
     if (root.globalApplyStatus === "Settings saved. Some applications need attention; see Applications."
-        && !root.fontActionNeedsAttention && !root.themeActionNeedsAttention && !root.opacityActionNeedsAttention)
+        && !root.fontActionNeedsAttention && !root.themeActionNeedsAttention && !root.opacityActionNeedsAttention && !root.fleaOpacityActionNeedsAttention)
       root.globalApplyStatus = "Settings saved."
   }
 
   function collectAttention() {
     var items = [], seen = ({})
-    var pending = (root.pendingBySection.fonts || []).concat(root.pendingBySection.theme || [], root.pendingBySection.opacity || [])
+    var pending = (root.pendingBySection.fonts || []).concat(root.pendingBySection.theme || [], root.pendingBySection.opacity || [], root.pendingBySection.fleaOpacity || [])
     if (root.hostWidget) pending = pending.concat(root.hostWidget.reconciliationPending || [])
     pending = pending.concat((root.hostWidget ? root.hostWidget.restartApplications : root.restartApplications) || [])
     pending.forEach(function(item) {
@@ -305,6 +307,10 @@ Panel {
 
   function applySelectedOpacity(fromGlobalApply) {
     return root.runAppearanceAction("opacity", ["apply-opacity", String(root.selectedOpacity)], fromGlobalApply)
+  }
+
+  function applySelectedFleaOpacity(fromGlobalApply) {
+    return root.runAppearanceAction("fleaOpacity", ["apply-flea-opacity", String(root.selectedFleaOpacity)], fromGlobalApply)
   }
 
   function applySelectedBlur(fromGlobalApply) {
@@ -400,6 +406,7 @@ Panel {
     if (step === "fonts") return "Fonts"
     if (step === "theme") return "Theme"
     if (step === "opacity") return "Terminal opacity"
+    if (step === "fleaOpacity") return "Flea opacity"
     if (step === "blur") return "Terminal blur"
     if (step === "background") return "Background"
     if (step === "icons") return "Icons"
@@ -441,6 +448,7 @@ Panel {
     root.applyFailed = false
     root.globalApplySteps = ["theme", "fonts", "background"]
     if (root.selectedOpacity >= 0) root.globalApplySteps.splice(1, 0, "opacity")
+    if (root.selectedFleaOpacity >= 0) root.globalApplySteps.splice(1, 0, "fleaOpacity")
     if (root.selectedBlur && root.selectedBlur !== "keep")
       root.globalApplySteps.splice(root.globalApplySteps.indexOf("fonts"), 0, "blur")
     if (root.selectedIconId) root.globalApplySteps.push("icons")
@@ -456,7 +464,7 @@ Panel {
     if (root.globalApplyStepIndex >= root.globalApplySteps.length) {
       var includedUnlock = root.globalApplySteps.indexOf("unlock") >= 0
       root.globalApplyRunning = false
-      root.globalApplyStatus = (root.fontActionNeedsAttention || root.themeActionNeedsAttention || root.opacityActionNeedsAttention)
+      root.globalApplyStatus = (root.fontActionNeedsAttention || root.themeActionNeedsAttention || root.opacityActionNeedsAttention || root.fleaOpacityActionNeedsAttention)
         ? "Settings saved. Some applications need attention; see Applications."
         : (includedUnlock ? "Settings saved, including verified boot artwork." : "Settings saved.")
       return
@@ -470,6 +478,7 @@ Panel {
     if (step === "fonts") started = root.applyGlobalFonts(true)
     else if (step === "theme") started = root.applySelectedTheme(true)
     else if (step === "opacity") started = root.applySelectedOpacity(true)
+    else if (step === "fleaOpacity") started = root.applySelectedFleaOpacity(true)
     else if (step === "blur") started = root.applySelectedBlur(true)
     else if (step === "background") started = root.applySelectedBackground(true)
     else if (step === "icons") started = root.applySelectedIcons(true)
@@ -671,6 +680,8 @@ Panel {
         selectedThemeMode = "automatic"
         selectedOpacity = data.desiredAppearance && Number.isInteger(data.desiredAppearance.opacity)
           ? data.desiredAppearance.opacity : -1
+        selectedFleaOpacity = data.desiredAppearance && Number.isInteger(data.desiredAppearance.fleaOpacity)
+          ? data.desiredAppearance.fleaOpacity : -1
         var savedBlur = data.desiredAppearance && data.desiredAppearance.blur
         selectedBlur = typeof savedBlur === "boolean" ? (savedBlur ? "on" : "off") : "keep"
         var savedTheme = data.desiredAppearance && data.desiredAppearance.theme
@@ -1190,6 +1201,32 @@ Panel {
                 }
                 ResultNotice { Layout.fillWidth: true; kind: "opacity" }
                 ResultNotice { Layout.fillWidth: true; kind: "blur" }
+                RowLayout {
+                  Layout.fillWidth: true; Layout.maximumWidth: 492; spacing: 12
+                  ColumnLayout {
+                    Layout.fillWidth: true; spacing: 8
+                    RowLayout {
+                      Layout.fillWidth: true
+                      FieldLabel { text: "Flea opacity"; Layout.fillWidth: true }
+                      ActionButton { objectName: "undoFleaOpacityButton"; text: "Undo"; Accessible.name: "Undo Flea opacity"; quiet: true; visible: !!(root.appearanceActionStatuses.fleaOpacity || {}).undoAvailable; onClicked: root.undoAppearanceAction("fleaOpacity") }
+                    }
+                    Picker {
+                      id: fleaOpacityPicker
+                      objectName: "fleaOpacityPicker"
+                      Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: 240
+                      accessibleLabel: "Flea opacity"
+                      model: root.opacityChoices
+                      currentIndex: root.opacityChoices.findIndex(function(entry) { return entry.id === root.selectedFleaOpacity })
+                      onActivated: function(index) { root.selectedFleaOpacity = root.opacityChoices[index].id }
+                    }
+                  }
+                }
+                Caption {
+                  Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth
+                  color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2
+                  text: "Flea background only; text and icons stay opaque. A window opened at 100% may need reopening to enable transparency."
+                }
+                ResultNotice { Layout.fillWidth: true; kind: "fleaOpacity" }
               }
               ResultNotice { Layout.fillWidth: true; kind: "theme" }
               Divider {}
@@ -1548,7 +1585,7 @@ Panel {
             root.observedTheme = String(result.readback || result.restored || "")
             root.lastAppliedThemeSetThisSession = true
           }
-          message = "Restored the previous " + kind + " setting."
+          message = "Restored the previous " + (kind === "fleaOpacity" ? "Flea opacity" : kind) + " setting."
           if (kind === "theme") {
             var restoredTheme = String(result.restored || "").toLowerCase().replace(/_/g, "-")
             var restoredThemeEntry = root.themes.find(function(entry) { return String(entry.name).toLowerCase().replace(/_/g, "-") === restoredTheme })
@@ -1564,6 +1601,8 @@ Panel {
             root.selectedIconId = restoredIcon ? restoredIcon.id : ""
           } else if (kind === "opacity") {
             root.selectedOpacity = Number.isInteger(result.savedPercent) ? result.savedPercent : -1
+          } else if (kind === "fleaOpacity") {
+            root.selectedFleaOpacity = Number.isInteger(result.savedPercent) ? result.savedPercent : -1
           } else if (kind === "blur") {
             root.selectedBlur = typeof result.savedBlur === "boolean" ? (result.savedBlur ? "on" : "off") : "keep"
           } else {
@@ -1588,6 +1627,8 @@ Panel {
           message = "Icon settings saved and read back for desktop, GTK and available Qt integrations."
         } else if (kind === "opacity") {
           message = "Terminal opacity saved at " + result.opacityPercent + "%."
+        } else if (kind === "fleaOpacity") {
+          message = "Flea background opacity saved at " + result.opacityPercent + "%."
         } else if (kind === "blur") {
           message = "Terminal blur is " + (result.blurEnabled ? "On" : "Off") + "."
         } else if (kind === "background") {
@@ -1615,9 +1656,14 @@ Panel {
           root.opacityActionNeedsAttention = (result.pendingApplications || []).length > 0
           if ((result.pendingApplications || []).length) message += " " + result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join(" ")
         }
-        if ((kind === "theme" || kind === "opacity" || kind === "icons" || kind === "blur")
+        if (kind === "fleaOpacity") {
+          root.updatePending("fleaOpacity", result)
+          root.fleaOpacityActionNeedsAttention = (result.pendingApplications || []).length > 0
+          if (root.fleaOpacityActionNeedsAttention) message += " " + result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join(" ")
+        }
+        if ((kind === "theme" || kind === "opacity" || kind === "icons" || kind === "blur" || kind === "fleaOpacity")
             && root.hostWidget && typeof root.hostWidget.sectionApplied === "function") root.hostWidget.sectionApplied(kind)
-        root.setSectionResult(kind, (kind === "theme" && root.themeActionNeedsAttention) || (kind === "opacity" && root.opacityActionNeedsAttention) ? "pending" : "saved", message)
+        root.setSectionResult(kind, (kind === "theme" && root.themeActionNeedsAttention) || (kind === "opacity" && root.opacityActionNeedsAttention) || (kind === "fleaOpacity" && root.fleaOpacityActionNeedsAttention) ? "pending" : "saved", message)
         if (kind === "unlock") root.unlockSelectionChanged = false
         root.appearanceAuditStatus = ""
         root.refreshInventory()

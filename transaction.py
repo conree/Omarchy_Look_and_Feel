@@ -70,6 +70,7 @@ FILE_TARGETS: dict[str, str] = {
     "qt5ct-settings": (_configured_home_rel / "qt5ct" / "qt5ct.conf").as_posix(),
     "qt6ct-settings": (_configured_home_rel / "qt6ct" / "qt6ct.conf").as_posix(),
     "fontconfig-monospace": (_configured_home_rel / "fontconfig" / "fonts.conf").as_posix(),
+    "fontconfig-generics": (_configured_home_rel / "omarchy-look-and-feel" / "fontconfig-generics.conf").as_posix(),
     "omarchy-shell-font": (_configured_home_rel / "omarchy" / "shell-font.json").as_posix(),
     "omarchy-shell-style": (_configured_home_rel / "omarchy" / "shell.toml").as_posix(),
     "global-font-selection": (_configured_home_rel / "omarchy-look-and-feel" / "font-selection.json").as_posix(),

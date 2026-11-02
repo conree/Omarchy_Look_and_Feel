@@ -17,7 +17,7 @@ BarWidget {
   property bool reconciliationFailed: false
   property int auditGeneration: 0
   property bool auditRefreshPending: false
-  property var sectionGeneration: ({ fonts: 0, theme: 0, opacity: 0, icons: 0, blur: 0 })
+  property var sectionGeneration: ({ fonts: 0, theme: 0, opacity: 0, icons: 0, blur: 0, fleaOpacity: 0 })
   property var reconciliationOwners: ({})
   readonly property string appearanceConfigDir: {
     var configured = Quickshell.env("XDG_CONFIG_HOME")
@@ -235,6 +235,13 @@ BarWidget {
           panel.setSectionResult("opacity", "saved", "No terminal reloads are pending.")
       }
       if (Array.isArray(result.restartApplications)) root.restartApplications = result.restartApplications
+      var fleaOpacity = (result.results || {}).fleaOpacity
+      if (panel && staleSections.indexOf("fleaOpacity") < 0 && fleaOpacity && Array.isArray(fleaOpacity.pendingApplications)) {
+        panel.updatePending("fleaOpacity", fleaOpacity)
+        panel.fleaOpacityActionNeedsAttention = fleaOpacity.pendingApplications.length > 0
+        if (!panel.fleaOpacityActionNeedsAttention && (panel.sectionResults.fleaOpacity || {}).state === "pending")
+          panel.setSectionResult("fleaOpacity", "saved", "No Flea opacity changes are pending.")
+      }
       root.reconciliationMessage = result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join("\n")
     } catch (e) { root.reconciliationFailed = true; root.reconciliationMessage = "The appearance check returned an unreadable result." }
     if (root.auditRefreshPending) Qt.callLater(root.tryReconcile)

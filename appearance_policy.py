@@ -44,13 +44,16 @@ def set_repair_enabled(enabled):
 def validate(data):
     if (not isinstance(data, dict) or data.get('schemaVersion') != 1
             or not {'schemaVersion', 'fonts', 'theme', 'background'} <= set(data)
-            or set(data) - {'schemaVersion', 'fonts', 'theme', 'background', 'icons', 'opacity', 'blur'}):
+            or set(data) - {'schemaVersion', 'fonts', 'theme', 'background', 'icons', 'opacity', 'blur', 'fleaOpacity'}):
         raise ValueError('unsupported Look and Feel policy schema')
     if data.get('blur') is not None and type(data['blur']) is not bool:
         raise ValueError('Terminal blur must be On or Off')
     if data.get('opacity') is not None:
         from opacity_actions import validate_percent
         validate_percent(data['opacity'])
+    if data.get('fleaOpacity') is not None:
+        from flea_opacity import validate_percent
+        validate_percent(data['fleaOpacity'])
     if data.get('icons') is not None and (not isinstance(data['icons'], str) or not data['icons'].startswith('icon:') or len(data['icons']) > 300):
         raise ValueError('invalid saved icon selection')
     fonts = data['fonts']
@@ -326,7 +329,7 @@ def reconcile():
     import requirements
     policy = read()
     pending, results, pending_by_section = [], {}, {}
-    for section in ('theme', 'fonts', 'icons', 'opacity', 'blur'):
+    for section in ('theme', 'fonts', 'icons', 'opacity', 'blur', 'fleaOpacity'):
         value = policy.get(section)
         if value is None:
             continue
@@ -341,6 +344,9 @@ def reconcile():
             elif section == 'opacity':
                 from opacity_actions import apply as apply_opacity
                 result = apply_opacity(value, automatic=True)
+            elif section == 'fleaOpacity':
+                from flea_opacity import apply as apply_flea_opacity
+                result = apply_flea_opacity(value, automatic=True)
             elif section == 'icons':
                 from icon_actions import apply as apply_icons
                 result = apply_icons(value, automatic=True)

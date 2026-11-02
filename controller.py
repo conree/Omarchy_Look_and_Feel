@@ -542,6 +542,8 @@ def inventory() -> dict[str, object]:
     status["icons"] = icon_actions.status()
     import opacity_actions
     status["opacity"] = opacity_actions.status()
+    import flea_opacity
+    status['fleaOpacity'] = flea_opacity.status()
     import blur_actions
     status["blur"] = blur_actions.status()
     saved_theme = appearance_policy.latest(appearance_policy.LABEL_THEME)
@@ -783,6 +785,7 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         targets["appearance-policy"] = policy.update("fonts", {"systemId": system_font_id, "systemSize": system_size,
                                                                 "terminalId": terminal_font_id, "terminalSize": terminal_size})
     ownership = {
+        'omarchy-shell-style': {'font/base-size'},
         'fontconfig-monospace': {'monospace-rule'},
         'wezterm-config': {'fonts'},
         'appearance-policy': {'fonts'},
@@ -803,6 +806,10 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
                                         parent_transaction=parent[1].name if parent else None, owned_fields=ownership) if targets else None
     from terminal_reload import reload_fonts
     reload_status = reload_fonts(set(targets), retry=automatic)
+    from generic_fonts import status as generic_font_status
+    generic_pending = generic_font_status(system_family, terminal_family)
+    if generic_pending:
+        pending.append(generic_pending)
     from browser_font_actions import family_notes
     return {
         "transaction": transaction_id,
@@ -829,7 +836,7 @@ def write_action_result(result):
 
 
 def main(argv: list[str]) -> int:
-    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-opacity", "apply-blur", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile", "set-repair"}
+    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-opacity", "apply-flea-opacity", "apply-blur", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile", "set-repair"}
     if not mutation:
         return _main(argv)
     import appearance_policy
@@ -911,6 +918,11 @@ def _main(argv: list[str]) -> int:
         write_action_result(apply_opacity(int(argv[1])))
         return 0
 
+    if len(argv) == 2 and argv[0] == 'apply-flea-opacity':
+        from flea_opacity import apply
+        write_action_result(apply(int(argv[1])))
+        return 0
+
     if len(argv) == 2 and argv[0] == 'apply-blur':
         from blur_actions import apply as apply_blur
         if argv[1] not in {'on', 'off'}:
@@ -972,6 +984,9 @@ def _main(argv: list[str]) -> int:
                 result = undo()
             elif argv[1] == "opacity":
                 from opacity_actions import undo
+                result = undo()
+            elif argv[1] == 'fleaOpacity':
+                from flea_opacity import undo
                 result = undo()
             elif argv[1] == "blur":
                 from blur_actions import undo

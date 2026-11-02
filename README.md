@@ -265,11 +265,43 @@ results: a successful file write is never proof of what an application displays.
 | GTK 3/4 and desktop settings | Font, normalized text-scaling factor, icons, light/dark preference, generated palette; competing appearance declarations in user GTK CSS are removed while layout is retained. |
 | Qt through qt5ct/qt6ct | System/fixed fonts, installed icon theme and generated palette. Apply detects a selector shared by both installed integrations and saves one owned override in the standard Omarchy Hyprland Lua config. A fresh login activates it for all launchers. Qt 6 can inherit GTK colors; Qt 5 GTK integration alone does not supply the palette. |
 | Ghostty, Alacritty, Kitty, Foot, WezTerm | Detected terminal fonts; Omarchy terminal palettes plus a generated WezTerm override. Supported reloads preserve sessions. Foot color refresh uses only owned PTYs; font changes need new Foot windows. |
+| Generic Fontconfig families | Selected system font for `sans-serif`, selected terminal font for `monospace`; requires the one-time early loader below. Explicit family requests are preserved. |
 | Omarchy shell | A shared runtime system-font binding, with point-to-pixel size conversion and restoration when font ownership ends. No separate shell-font plugin is required. |
 | Typora | System font for prose, terminal font for code, generated theme and user CSS conflict repair. Its native profile is activated once while closed; subsequent theme changes update the managed stylesheet. |
 | Betterbird | Selected profile's font preferences, with its native profile lock held. Ambiguous profiles remain pending. |
 | Brave | Default profile's standard/serif/sans/fixed font preferences while closed; conflicting unpacked theme-only launch flags can be removed. Enterprise policy is never rewritten. |
 | OnlyOffice | Reversible native-frame setting and launcher flag, avoiding its custom transparent frame. Apply requires closure when changing its native setting. |
+
+### Flea opacity
+
+The Appearance tab also has a separate **Flea opacity** selector (0–100%, in
+5% steps). Apply changes only Flea's native background opacity; text and icons
+remain opaque. **Keep current settings** skips the control. Flea opacity has
+its own Undo and automatic repair, independent of terminal opacity and fonts.
+If Flea was opened with an explicit 100% setting, reopen it after lowering
+opacity; the plugin reports that requirement. Other windows normally update
+live. No administrator setup is needed for this control.
+
+### Generic font preferences
+
+Omarchy can replace generic font names before normal user Fontconfig files are
+read. Install the plugin's small loader once, from the plugin checkout:
+
+```sh
+sudo install -m 0644 assets/00-look-and-feel.conf /etc/fonts/conf.d/00-look-and-feel.conf
+```
+
+Apply Fonts then writes `~/.config/omarchy-look-and-feel/fontconfig-generics.conf`
+(or its XDG equivalent) with the selected system and terminal families. The
+loader reads this file before distribution substitutions. Subsequent Apply,
+automatic repair and Undo use the existing user-level transaction journal;
+no further administrator access is needed. Serif and explicit named font choices
+are not remapped. Reopen applications that cache fonts, including Flea.
+The plugin reports missing setup or a conflicting effective font match as pending.
+The loader contains no personal font choices and does nothing for users without
+the preferences file. Undo restores/removes the preferences, leaving the loader
+installed. To remove the integration completely, Undo Fonts first, then remove
+`/etc/fonts/conf.d/00-look-and-feel.conf` with administrator privileges.
 
 Application adapters ship with the plugin and derive values from the same saved
 choices. They are not host-specific scripts. Unknown application-owned controls,

@@ -354,6 +354,8 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
         raise TransactionError("font sizes must be whole points between 6 and 48")
 
     targets: dict[str, bytes] = {}
+    from generic_fonts import build as generic_font_preferences
+    targets['fontconfig-generics'] = generic_font_preferences(system_family, terminal_family)
     for target_id, path in (
         ("gtk3-settings", CONFIG / "gtk-3.0/settings.ini"),
         ("gtk4-settings", CONFIG / "gtk-4.0/settings.ini"),
@@ -405,18 +407,10 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
     shell_style = _read(shell_style_path, allow_missing=True)
     # The chooser uses points; Omarchy shell tokens use logical pixels.
     shell_size = round(system_size * 96 / 72)
-    lines = shell_style.splitlines()
-    start = next((i for i, line in enumerate(lines) if line.strip() == "[font]"), None)
-    if start is None:
-        lines.extend(["", "[font]", f"base-size = {shell_size}"])
-    else:
-        end = next((i for i in range(start + 1, len(lines)) if re.match(r"\s*\[.+\]\s*$", lines[i])), len(lines))
-        active = next((i for i in range(start + 1, end) if re.match(r"\s*base-size\s*=", lines[i])), None)
-        if active is None:
-            lines.insert(end, f"base-size = {shell_size}")
-        else:
-            lines[active] = re.sub(r"^(\s*base-size\s*=\s*).*$", rf"\g<1>{shell_size}", lines[active])
-    targets["omarchy-shell-style"] = ("\n".join(lines).rstrip() + "\n").encode()
+    import shell_preferences
+    shell_values = shell_preferences.decode(shell_style.encode())
+    shell_values['font/base-size'] = f'base-size = {shell_size}\n'
+    targets["omarchy-shell-style"] = shell_preferences.encode(shell_values)
 
     global_selection = {
         "schemaVersion": 1,
