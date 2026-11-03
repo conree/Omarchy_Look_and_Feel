@@ -1,6 +1,19 @@
 # Project status
 
-## Current: v0.3.3 bug fixes — November 1
+## Current: v0.3.4 — November 3
+
+The release combines the GTK menu-hover correction with the generic-font and
+Flea opacity work from commit `08c949b`. The owner confirmed the purple bookmark
+highlight in running Brave. Earlier Flea live checks and current focused
+regressions are scoped in [release validation](RELEASE_VALIDATION.md).
+
+Manifest, panel label and README identify 0.3.4. The owner authorized the handoff,
+commit and push; this supersedes the November 2 handoff's local-only instruction.
+The release commit and `v0.3.4` tag identify the publication revision. See
+[release notes](RELEASE_NOTES_0.3.4.md). Unrelated working-tree documents are
+excluded from this release.
+
+## Previous: v0.3.3 bug fixes — November 1
 
 Fonts layout, stale pending-font notices and Apply guidance are corrected.
 The owner accepted the final combined footer beside APPLY CHANGES and authorized

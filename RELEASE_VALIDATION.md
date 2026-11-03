@@ -1,4 +1,36 @@
-# Release validation — updated 2026-11-01
+# Release validation — updated 2026-11-03
+
+## GTK menu highlights and Flea integration — November 3, v0.3.4
+
+The GTK generator now emits `menu menuitem:hover` with the current selection
+background, readable selection foreground and `background-image: none`.
+Independent source review checked that single-rule diff and both matching active
+GTK stylesheets. The owner then confirmed that the pink/purple bookmark-menu
+highlight works in running Brave. Agent-driven desktop navigation did not
+establish the live result; the owner's direct check supplies that evidence.
+No separate GTK 4 application rendering check is claimed.
+
+`check_portable_appearance.py` passed after the rule change in this session;
+its result is reused for release preparation because runtime code is unchanged.
+Release preparation also passed `check_generic_fonts.py`, `check_flea_opacity.py`,
+`check_terminal_opacity.py`, `check_font_transactions.py` and
+`check_fontconfig_policy.py`. These check native font ordering, generic-family
+resolution, explicit/serif preservation, independent font/opacity Undo,
+repair baselines, malformed settings and pending-reopen behavior. The terminal
+check covers adjacent shared transaction behavior; it is not a new live opacity
+sweep. No full-suite result is claimed.
+
+Flea integration is the unchanged work in `08c949b`. Earlier November 2 checks
+used installed Flea 0.3.12-1: live font IPC and rendering after reopening, and
+production panel/real-window opacity checks at 0%, 75% and 100%. They verified
+opaque text/icons and the reopen notice for a window started fully opaque.
+Earlier independent review checked that source and its screenshots. These
+historical live observations were not repeated for the documentation/version
+bump. Wider Flea versions and desktops remain untested.
+
+The 0.3.4 manifest, visible panel label and README agree. This release does not
+automatically remove Brave managed policies or install the privileged Fontconfig
+loader. Setup requirements remain documented in README and the release notes.
 
 ## Fonts, warning refresh and footer — November 1, v0.3.3
 
