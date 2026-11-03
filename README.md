@@ -6,18 +6,17 @@ Bring supported GTK, Qt and terminal apps together with shared themes and fonts.
 Choose light and dark themes, terminal opacity and blur, backgrounds and icons—all from one place.
 Changes are journalled, with separate **Undo** controls for each section.
 
-Version **0.3.4** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+Version **0.3.5** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
-## What's changed in 0.3.4
+## What's changed in 0.3.5
 
-- GTK bookmark-menu highlights, including Brave in **Use GTK** mode, now follow
-  the selected palette instead of retaining the base theme's hover color.
-- Generic font preferences let Flea use the selected terminal font, with a
-  one-time Fontconfig loader setup described below.
-- A separate **Flea opacity** control provides Apply, Undo and automatic repair
-  while keeping text and icons opaque.
+- APPLY CHANGES can recover when the current wallpaper link points to a deleted
+  image: it applies your selected replacement background before the theme.
+- Failed or interrupted repairs preserve the original link, and success requires
+  a readable replacement image. Undo is unavailable for that repair because the
+  previous image is missing; ordinary background changes retain Undo.
 
-See [the 0.3.4 release notes](RELEASE_NOTES_0.3.4.md) for verification and scope.
+See [the 0.3.5 release notes](RELEASE_NOTES_0.3.5.md) for verification and scope.
 
 > **Automatic repair:** by default, after you apply a choice, the loaded plugin checks saved
 > themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and

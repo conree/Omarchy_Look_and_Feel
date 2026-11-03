@@ -1,5 +1,38 @@
 # Release validation — updated 2026-11-03
 
+## Missing wallpaper recovery — November 3, v0.3.5
+
+The current wallpaper symlink pointed to a deleted image. Theme Apply refused
+to preserve an unreadable background, while full Apply queued the selected
+replacement after Theme. The corrected panel runs Background first when current
+background readback is absent. Explicit background repair journals the missing
+link identity for failure recovery, requires readable success readback, and
+disables Undo to the missing image. Normal background changes keep Undo.
+
+Passing focused checks from the implementation session:
+
+- `check_background_repair.py`: real temporary files exercise stale missing
+  selections, successful repair, command failure, selected image disappearance,
+  interrupted recovery, external drift preservation and ordinary Apply/Undo.
+- `check_unlock_recovery.py`: 28 isolated checks protect recovery boundaries.
+- `check_panel_design.js`: 31 production-function cases, including replacement
+  before Theme, stopping on repair failure and running Background only once.
+
+Independent review found and verified fixes for two false-success edges: a
+replacement disappearing during Apply, and a stale selection matching the
+missing old image. The reviewer independently reran the background regression.
+These tests use isolated files or inert process fixtures; they do not prove UI
+rendering.
+
+The repaired controller was exercised on the installed system. It committed a
+readable replacement wallpaper and reconciliation reported no pending errors.
+The owner confirmed “Background just showed up” and subsequently “The Full Apply
+worked.” Those direct observations establish live wallpaper and full Apply
+acceptance. The reviewer inspected the actual link, journal and reconciliation
+state but did not independently operate the panel. No new broad application,
+theme or opacity-extreme sweep is claimed. Release preparation changes version
+labels and documentation only; the passing behavior evidence is reused.
+
 ## GTK menu highlights and Flea integration — November 3, v0.3.4
 
 The GTK generator now emits `menu menuitem:hover` with the current selection

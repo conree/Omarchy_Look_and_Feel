@@ -161,6 +161,24 @@ function finishAll(f, {fontResult, themeResult} = {}) {
 const tests = [];
 function test(name, body) { tests.push([name, body]); }
 
+test('missing current wallpaper is replaced before Theme, and repair failure stops Apply', () => {
+  const f = fixture();
+  f.root.appearanceActionStatuses.background.observedValue = null;
+  f.root.applyAllSelectedSettings();
+  assert.deepStrictEqual(actionSteps(f), ['background']);
+  f.appearance({state: 'committed', readback: '/themes/light/backgrounds/one.png', undoAvailable: false});
+  assert.deepStrictEqual(actionSteps(f), ['background', 'theme']);
+  finishAll(f);
+  assert.equal(actionSteps(f).filter(step => step === 'background').length, 1);
+  assert.equal(f.root.applyFailed, false);
+  const failed = fixture();
+  failed.root.appearanceActionStatuses.background.observedValue = null;
+  failed.root.applyAllSelectedSettings();
+  failed.appearance({}, 1);
+  assert.deepStrictEqual(actionSteps(failed), ['background']);
+  assert.equal(failed.root.applyFailed, true);
+});
+
 test('blur follows opacity independently, preserves Off drafts and supports Undo', () => {
   const f = fixture(); f.root.selectedOpacity = 70; f.root.selectedBlur = 'off';
   f.root.applyAllSelectedSettings();

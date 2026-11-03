@@ -452,6 +452,11 @@ Panel {
     if (root.selectedBlur && root.selectedBlur !== "keep")
       root.globalApplySteps.splice(root.globalApplySteps.indexOf("fonts"), 0, "blur")
     if (root.selectedIconId) root.globalApplySteps.push("icons")
+    // A deleted wallpaper must be replaced before Theme can preserve it.
+    if (!(root.appearanceActionStatuses.background || {}).observedValue) {
+      root.globalApplySteps.splice(root.globalApplySteps.indexOf("background"), 1)
+      root.globalApplySteps.unshift("background")
+    }
     if (root.unlockApplyAvailable && root.unlockSelectionChanged && root.selectedUnlockId) root.globalApplySteps.push("unlock")
     root.globalApplyStepIndex = 0
     root.globalApplyRunning = true
@@ -1092,7 +1097,7 @@ Panel {
               spacing: 6
               Text { text: "Look"; color: root.brandColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
               Text { text: "& Feel"; color: root.accentColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
-              Caption { text: "v0.3.4"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
+              Caption { text: "v0.3.5"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
             }
             Caption { text: "Your desktop, in one place"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
           }

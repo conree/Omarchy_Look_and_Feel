@@ -245,6 +245,39 @@ def _journal_background_target(journal: dict[str, object]) -> str | None:
     return current if current is not None else _background_link_target()
 
 
+def _background_action_state() -> str | None:
+    """Retain a dangling link's identity so an explicit replacement can repair it."""
+    current = _background_state()
+    if current is not None:
+        return current
+    target = _background_link_target()
+    if target:
+        try:
+            Path(target).stat()
+        except FileNotFoundError:
+            return target
+    return None
+
+
+def _restore_background(journal: dict[str, object]) -> None:
+    prior = str(journal["before"])
+    if not journal.get("backgroundBeforeMissing"):
+        _set_background(prior)
+        return
+    # Failed repairs restore the original link, even though its image is gone.
+    # Do not send a nonexistent image to the desktop background renderer.
+    if not Path(prior).is_absolute():
+        raise TransactionError("invalid previous background link")
+    link = CURRENT_DIR / "background"
+    temporary = link.with_name(".background-restore-" + uuid.uuid4().hex)
+    try:
+        temporary.symlink_to(prior)
+        os.replace(temporary, link)
+        _fsync_dir(link.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def _theme_background_targets(journal: dict[str, object]) -> set[str]:
     return {
         str(journal.get("backgroundBefore")),
@@ -303,6 +336,8 @@ def _recover_pending_locked(*, allow_unlock_recovery: bool = False) -> list[str]
             if journal["state"] not in pending_states:
                 continue
             current = getter()
+            if kind == "background" and journal.get("backgroundBeforeMissing") and current is None:
+                current = _background_action_state()
             before, after = str(journal["before"]), str(journal["after"])
             if current not in {before, after}:
                 journal["state"] = "recovery_required"
@@ -324,9 +359,13 @@ def _recover_pending_locked(*, allow_unlock_recovery: bool = False) -> list[str]
                 # matches; theme and unlock commands update runtime assets too.
                 if kind == "theme":
                     _restore_theme(journal)
+                elif kind == "background" and journal.get("backgroundBeforeMissing"):
+                    _restore_background(journal)
                 else:
                     setter(before)
                 restored = getter()
+                if kind == "background" and journal.get("backgroundBeforeMissing") and restored is None:
+                    restored = _background_action_state()
                 if restored != before:
                     raise TransactionError(f"readback after recovery was {restored!r}, expected {before!r}")
                 if kind == "theme" and journal.get("backgroundBefore") and _background_state() not in {
@@ -358,12 +397,17 @@ def apply_action(kind: str, target: str, allowed_targets: set[str]) -> dict[str,
         _recover_pending_locked(allow_unlock_recovery=kind == "unlock")
         getter, setter = HANDLERS[kind]
         before = getter()
+        background_missing = kind == "background" and before is None
+        if background_missing:
+            before = _background_action_state()
         if before is None:
             raise TransactionError(f"the current {kind} cannot be read, so a reversible change is unavailable")
         background_before = _background_state() if kind == "theme" else None
         if kind == "theme" and background_before is None:
             raise TransactionError("the current background cannot be read, so theme Apply cannot preserve it")
         if before == target:
+            if background_missing:
+                raise TransactionError("the selected wallpaper file is missing; choose an available background")
             return {"kind": kind, "state": "already-current", "before": before, "after": target, "undoAvailable": False}
         transaction_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "-" + uuid.uuid4().hex[:12]
         transaction_dir = _kind_root(kind) / transaction_id
@@ -373,6 +417,8 @@ def apply_action(kind: str, target: str, allowed_targets: set[str]) -> dict[str,
             "state": "prepared", "before": before, "after": target,
             "createdAt": datetime.now(timezone.utc).isoformat(),
         }
+        if background_missing:
+            journal["backgroundBeforeMissing"] = True
         if kind == "theme" and background_before is not None:
             journal["backgroundBefore"] = background_before
             journal["backgroundDigest"] = _file_digest(background_before)
@@ -408,6 +454,8 @@ def apply_action(kind: str, target: str, allowed_targets: set[str]) -> dict[str,
             _write_journal(_journal_path(transaction_dir), journal)
             try:
                 current = getter()
+                if kind == "background" and journal.get("backgroundBeforeMissing") and current is None:
+                    current = _background_action_state()
                 if current not in {before, target}:
                     raise TransactionError(f"state drifted to {current!r}; preserving external change")
                 if kind == "theme":
@@ -416,9 +464,13 @@ def apply_action(kind: str, target: str, allowed_targets: set[str]) -> dict[str,
                         raise TransactionError(f"background changed independently to {background_current!r}; preserving external change")
                 if kind == "theme":
                     _restore_theme(journal)
+                elif kind == "background" and journal.get("backgroundBeforeMissing"):
+                    _restore_background(journal)
                 else:
                     setter(before)
                 restored = getter()
+                if kind == "background" and journal.get("backgroundBeforeMissing") and restored is None:
+                    restored = _background_action_state()
                 if restored != before:
                     raise TransactionError(f"rollback readback was {restored!r}, expected {before!r}")
                 if kind == "theme" and journal.get("backgroundBefore") and _background_state() not in {
@@ -437,7 +489,8 @@ def apply_action(kind: str, target: str, allowed_targets: set[str]) -> dict[str,
         _prune_action_history(kind)
         return {
             "transaction": transaction_id, "kind": kind, "state": "committed",
-            "before": before, "after": target, "readback": actual, "undoAvailable": True,
+            "before": before, "after": target, "readback": actual,
+            "undoAvailable": not journal.get("backgroundBeforeMissing", False),
             **({"backgroundReadback": _background_state()} if kind == "theme" else {}),
         }
 
@@ -478,6 +531,8 @@ def rollback_action(kind: str) -> dict[str, object]:
         if not committed:
             raise TransactionError(f"there is no committed {kind} action to undo")
         _, directory, journal = committed[-1]
+        if journal.get("backgroundBeforeMissing"):
+            raise TransactionError("the previous wallpaper file was missing; there is no image to restore")
         getter, setter = HANDLERS[kind]
         before, after = str(journal["before"]), str(journal["after"])
         current = getter()
@@ -533,7 +588,7 @@ def action_status() -> dict[str, dict[str, object]]:
                 "expectedValue": journal["after"],
                 "previousValue": journal["before"],
                 "observedValue": current,
-                "undoAvailable": matches,
+                "undoAvailable": matches and not journal.get("backgroundBeforeMissing", False),
             }
         except Exception as exc:
             result[kind] = {"undoAvailable": False, "state": "unobservable", "detail": str(exc)[:500]}

@@ -7,9 +7,9 @@ The owner's installed plugin at
 `/home/si/.config/omarchy/plugins/si.omarchy-look-and-feel` is a symlink to this
 repository. Other users receive their own plugin-manager checkout.
 
-The 0.3.4 release combines the GTK menu-hover correction with generic-font and
-Flea opacity integration from `08c949b`. See `RELEASE_NOTES_0.3.4.md` and
-`RELEASE_VALIDATION.md` for scope and evidence. The `v0.3.4` tag identifies the
+The 0.3.5 release fixes Apply stopping at Theme when the current wallpaper link
+points to a missing image. See `RELEASE_NOTES_0.3.5.md` and
+`RELEASE_VALIDATION.md` for scope and evidence. The `v0.3.5` tag identifies the
 release revision once pushed.
 
 Git commits identify published source. [README.md](README.md) defines installation

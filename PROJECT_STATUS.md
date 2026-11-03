@@ -1,6 +1,20 @@
 # Project status
 
-## Current: v0.3.4 — November 3
+## Current: v0.3.5 — November 3
+
+Apply now repairs a dangling current-wallpaper link using the selected background
+before Theme runs. Failed or interrupted repair restores the original link;
+successful repair requires a readable image and does not offer Undo to a missing
+image. Normal background Apply and Undo retain their existing behavior.
+
+The owner confirmed that the background appeared and then that full Apply worked.
+Independent review checked the source, repair journal and live reconciliation
+state; focused regression checks passed. Manifest, panel label and README identify
+0.3.5. The owner authorized a handoff, commit, push and publication. See
+[release notes](RELEASE_NOTES_0.3.5.md) and [validation](RELEASE_VALIDATION.md).
+Unrelated working-tree documents remain excluded.
+
+## Previous: v0.3.4 — November 3
 
 The release combines the GTK menu-hover correction with the generic-font and
 Flea opacity work from commit `08c949b`. The owner confirmed the purple bookmark
