@@ -42,8 +42,16 @@ def require_offline_support(root):
     candidates = [Path(root) / 'bin/omarchy-theme-set', Path('/usr/bin/omarchy-theme-set')]
     script = next((path for path in candidates if path.is_file()), None)
     text = '\n'.join(line for line in script.read_text().splitlines() if not line.lstrip().startswith('#')) if script else ''
+    # Newer Omarchy adds the Hyprland reload to the visible command list here.
+    # Accept that specific prefix as well as the original direct run_parallel;
+    # do not match across arbitrary shell blocks and accidentally lose the guard.
+    guarded_refresh = re.search(
+        r'if \[\[ \$THEME_HEADLESS != "1" \]\]; then\s+'
+        r'(?:if \[\[ -z \$THEME_INTRO_TOKEN \]\]; then\s+'
+        r'visible_theme_commands\+=\(omarchy-restart-hyprctl\)\s+fi\s+)?'
+        r'run_parallel', text)
     supported = ('${OMARCHY_THEME_HEADLESS:-}' in text and 'THEME_HEADLESS=1' in text
-                 and re.search(r'if \[\[ \$THEME_HEADLESS != "1" \]\]; then\s+run_parallel', text))
+                 and guarded_refresh)
     if not supported:
         raise RuntimeError('This Omarchy version needs an offline theme-generation adapter before automatic Apply is available.')
 
