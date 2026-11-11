@@ -3,12 +3,20 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch,Mock
 from contextlib import ExitStack
+from types import SimpleNamespace
 import os,sys,subprocess
 sys.dont_write_bytecode=True
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import transaction as tx
 import app_font_actions as app
 import terminal_reload as reload
+
+# Malformed hyprctl output must fall back rather than abort Apply.
+for payload in ('[1, 2]', '["x"]', '{}', 'not json'):
+    with patch.object(app.subprocess, 'run', return_value=SimpleNamespace(returncode=0, stdout=payload)):
+        assert app.monitor_scale() == 5/3
+with patch.object(app.subprocess, 'run', side_effect=OSError('no hyprctl')):
+    assert app.monitor_scale() == 5/3
 
 old='user_pref("msgcompose.font_face", "Aileron");\nuser_pref("font.name.sans-serif.x-western", "Aileron");\nuser_pref("font.size.variable.x-western", 12);\nuser_pref("keep.other", "original");\n'
 for bad in ['user_pref(\n"msgcompose.font_face", "Old");\n', 'user_pref("msgcompose.font_face", "Old"); // comment\n',old+'user_pref("msgcompose.font_face", "Again");\n']:
@@ -21,11 +29,20 @@ commented = '/*\nuser_pref("msgcompose.font_face", "Inactive Family");\n*/\n'
 escaped = r'user_pref("msgcompose.font_\u0066ace", "Old Family");' + '\n'
 assert app.mail_font_values(commented)['msgcompose.font_face'] is None
 assert app.mail_font_values(escaped)['msgcompose.font_face'] == 'Old Family'
-merged = app.mail_preferences(commented + escaped, 'Avenir Next', 12)
+merged = app.mail_preferences(commented + escaped, 'Avenir Next', 12, ui_scale=5/3)
 assert commented in merged
 assert app.mail_font_values(merged)['msgcompose.font_face'] == 'Avenir Next'
+assert app.mail_font_values(merged)['mail.uifontsize'] == 17
+assert app.mail_font_values(app.mail_preferences(old, 'Avenir Next', 14, ui_scale=5/3))['mail.uifontsize'] == 20
+assert app.mail_ui_px(16, 1.5) == 15 and app.mail_ui_px(16, 2.5) == 26
+assert app.mail_font_values(app.mail_preferences(old, 'Avenir Next', 12, ui_scale=5/3))['font.size.variable.x-western'] is None
+assert app.mail_font_values(app.mail_preferences(old, 'Avenir Next', 14, ui_scale=5/3))['font.size.variable.x-western'] == 19
 restored = app.merge_mail_fonts(merged, app.mail_font_values(commented + escaped))
 assert commented in restored and app.mail_font_values(restored)['msgcompose.font_face'] == 'Old Family'
+for bad in ['user_pref("mail.uifontsize", "17");\n', 'user_pref("mail.uifontsize", 0);\n', 'user_pref("mail.uifontsize", 201);\n']:
+    try: app.mail_font_values(old + bad)
+    except ValueError: pass
+    else: raise AssertionError('invalid Betterbird UI size accepted')
 for bad in [escaped + 'user_pref("msgcompose.font_face", "Duplicate");\n',
             "user_pref('msgcompose.font_face', 'Old');\n",
             'user_pref ("msgcompose.font_face", "Old");\n']:
@@ -37,11 +54,12 @@ with TemporaryDirectory(prefix='laf-app-fonts-') as tmp,ExitStack() as stack:
     stack.enter_context(patch.object(tx,'_home',return_value=home))
     stack.enter_context(patch.dict(tx.FILE_TARGETS,{'betterbird-prefs':relative}))
     stack.enter_context(patch.dict(os.environ,{'XDG_CONFIG_HOME':str(home/'.config'),'XDG_STATE_HOME':str(home/'.local/state')}))
-    payload=app.mail_preferences(path.read_text(),'Avenir Next',12).encode()
+    payload=app.mail_preferences(path.read_text(),'Avenir Next',12, ui_scale=5/3).encode()
     path.write_text(old+'user_pref("saved.before.lock", true);\n')
     tid=tx.apply_file_targets({'betterbird-prefs':payload},label='mail')
     assert 'saved.before.lock' in path.read_text()
     assert app.mail_font_values(path.read_text())['msgcompose.font_face']=='Avenir Next'
+    assert app.mail_font_values(path.read_text())['mail.uifontsize']==17
     # Simulate application startup/save, changing unrelated preferences.
     path.write_text(path.read_text().replace('"original"','"changed by application"')+'user_pref("after.startup", 7);\n')
     assert tx.rollback_latest(label='mail')==tid

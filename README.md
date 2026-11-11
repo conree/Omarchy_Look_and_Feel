@@ -6,17 +6,19 @@ Bring supported GTK, Qt and terminal apps together with shared themes and fonts.
 Choose light and dark themes, terminal opacity and blur, backgrounds and icons—all from one place.
 Changes are journalled, with separate **Undo** controls for each section.
 
-Version **0.3.5** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+Version **0.3.6** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
-## What's changed in 0.3.5
+## What's changed in 0.3.6
 
-- APPLY CHANGES can recover when the current wallpaper link points to a deleted
-  image: it applies your selected replacement background before the theme.
-- Failed or interrupted repairs preserve the original link, and success requires
-  a readable replacement image. Undo is unavailable for that repair because the
-  previous image is missing; ordinary background changes retain Undo.
+- Shell text now follows the selected point size even when a theme pins its own
+  `[font]` tokens, as Sakura Mochi does.
+- Betterbird's interface size is managed from the focused monitor scale, and its
+  active profile is resolved from the executable and compatibility metadata.
+- Flea's Display text size is reset to Follow Omarchy through a journaled target;
+  close Flea first if it is running.
+- Newer Omarchy theme scripts with the optional empty-token guard are supported.
 
-See [the 0.3.5 release notes](RELEASE_NOTES_0.3.5.md) for verification and scope.
+See [the 0.3.6 release notes](RELEASE_NOTES_0.3.6.md) for verification and scope.
 
 > **Automatic repair:** by default, after you apply a choice, the loaded plugin checks saved
 > themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and
@@ -66,7 +68,7 @@ order:
 
 - **Close, then click APPLY CHANGES:** fully close the named application, click
   **APPLY CHANGES** while it remains closed, then reopen it after the settings are saved.
-  This applies to Betterbird when its composition-font settings need updating.
+  This applies to Betterbird when its interface or composition-font settings need updating.
   Do not rely on restarting the app alone to complete that update.
 - **Reopen to see changes:** settings are already saved; fully quit and reopen
   the application to load them.
@@ -267,7 +269,8 @@ results: a successful file write is never proof of what an application displays.
 | Generic Fontconfig families | Selected system font for `sans-serif`, selected terminal font for `monospace`; requires the one-time early loader below. Explicit family requests are preserved. |
 | Omarchy shell | A shared runtime system-font binding, with point-to-pixel size conversion and restoration when font ownership ends. No separate shell-font plugin is required. |
 | Typora | System font for prose, terminal font for code, generated theme and user CSS conflict repair. Its native profile is activated once while closed; subsequent theme changes update the managed stylesheet. |
-| Betterbird | Selected profile's font preferences, with its native profile lock held. Ambiguous profiles remain pending. |
+| Betterbird | Selected profile's interface and composition font preferences, resolved from the executable and profile compatibility metadata when the plugin loads. Ambiguous profiles remain pending; restart the shell after switching Betterbird profiles. |
+| Flea | Its Display text size is set to Follow Omarchy; the shell type tokens then supply the UI size. If Flea is running, close it and Apply again. |
 | Brave | Default profile's standard/serif/sans/fixed font preferences while closed; conflicting unpacked theme-only launch flags can be removed. Enterprise policy is never rewritten. |
 | OnlyOffice | Reversible native-frame setting and launcher flag, avoiding its custom transparent frame. Apply requires closure when changing its native setting. |
 
@@ -275,7 +278,7 @@ results: a successful file write is never proof of what an application displays.
 
 The Appearance tab also has a separate **Flea opacity** selector (0–100%, in
 5% steps). Apply changes only Flea's native background opacity; text and icons
-remain opaque. **Keep current settings** skips the control. Flea opacity has
+remain opaque. **Keep current settings** skips the control. Font Apply also sets Flea's Display text size to Follow Omarchy. Flea opacity has
 its own Undo and automatic repair, independent of terminal opacity and fonts.
 If Flea was opened with an explicit 100% setting, reopen it after lowering
 opacity; the plugin reports that requirement. Other windows normally update

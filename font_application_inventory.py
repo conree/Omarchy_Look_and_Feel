@@ -721,11 +721,11 @@ def _app_record(app_id: str, fields: dict[str, str], source: Path, package_owner
         if mail["engine"] == "Gecko":
             profile = next((item for item in discover_mail_profiles() if item["desktopId"] == mail["canonicalId"]), None)
             prefs = profile.get("prefsPath") if profile else ""
-            control = f"~/{prefs}: font.name.sans-serif.x-western (General default) and msgcompose.font_face (HTML Style)" if prefs else f"~/.thunderbird/profiles.ini: resolve the selected {client_name} profile before applying"
+            control = f"~/{prefs}: font.name.sans-serif.x-western (General default), mail.uifontsize (interface text), and msgcompose.font_face (HTML Style)" if prefs else f"~/.thunderbird/profiles.ini: resolve the selected {client_name} profile before applying"
             override = {
                 "framework": f"Gecko mail client ({client_name})",
                 "monospaceUse": "message-body-fixed-width-font-only",
-                "fontRoles": ["system-ui", "mail-message-body-font", "html-composition-font"],
+                "fontRoles": ["system-ui", "mail-interface-font", "mail-message-body-font", "html-composition-font"],
                 "controlPoints": [control, "Potential Gecko fixed-width family preference: font.name.monospace.x-western (not currently managed)", "Message-authored HTML may supply its own font styling."],
                 "localEvidence": [f"{client_name} profile discovery {('resolved ' + prefs) if prefs else 'did not resolve a unique supported profile'}; preference values are not copied into the inventory."],
                 "review": "profile-font-adapter-ready" if prefs else "profile-unresolved; adapter-not-applied",

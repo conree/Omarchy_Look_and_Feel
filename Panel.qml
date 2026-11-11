@@ -1097,7 +1097,7 @@ Panel {
               spacing: 6
               Text { text: "Look"; color: root.brandColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
               Text { text: "& Feel"; color: root.accentColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
-              Caption { text: "v0.3.5"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
+              Caption { text: "v0.3.6"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
             }
             Caption { text: "Your desktop, in one place"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
           }
@@ -1442,7 +1442,7 @@ Panel {
             }
             Text {
               width: parent.width
-              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. APPLY CHANGES uses both selections; Undo fonts restores the previous plugin font transaction. Supported running terminals receive a reload request. Some applications, including Betterbird when its composition fonts need updating, must be fully closed before clicking APPLY CHANGES and kept closed until it finishes. Reopen them afterward. Other applications only need reopening after settings are saved; check Applications for the required action. Saving configuration does not verify every application's rendered fonts. Unresolved audits do not block other font changes."
+              text: "System font family and size set the shared GTK and Omarchy shell font targets. Terminal font family and size set detected terminal configurations with verified adapters; discovery is not exhaustive. Only show monospaced fonts filters the terminal menu using installed font spacing metadata. It starts unchecked and keeps your current font selected until you choose another, even if that font is absent from the filtered menu. APPLY CHANGES uses both selections; Undo fonts restores the previous plugin font transaction. Supported running terminals receive a reload request. Some applications, including Betterbird when its interface and composition fonts need updating, must be fully closed before clicking APPLY CHANGES and kept closed until it finishes. Reopen them afterward. Other applications only need reopening after settings are saved; check Applications for the required action. Saving configuration does not verify every application's rendered fonts. Unresolved audits do not block other font changes."
               color: root.popupForeground
               font.family: root.fontFamily
               font.pixelSize: root.controlFontPixelSize

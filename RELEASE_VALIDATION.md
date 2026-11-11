@@ -1,5 +1,44 @@
-# Release validation — updated 2026-11-03
+# Release validation — updated 2026-11-11
 
+## Font sizing and application ownership — November 11, v0.3.6
+
+The change fixes two independent causes of inconsistent text sizes: pinned theme
+shell tokens ignored `base-size`, and Betterbird's interface size was never
+written. It also gives Flea an explicit Follow Omarchy target and resolves
+Betterbird's active profile from the installed executable.
+
+Passing focused checks:
+
+- `check_shell_font_scaling.py`: four isolated scenarios — fully pinned Sakura
+  tokens, fully derived Dracula tokens, partial pinning with derived icons, and
+  non-12 px base; Apply/Undo preserve unrelated TOML.
+- `check_application_fonts.py`: Betterbird UI 17 at 12 pt and 20 at 14 pt at the
+  reference scale, 15 at 1.5× and 26 at 2.5×; Gecko's default 16 px content is
+  absent; malformed `hyprctl` output falls back; profile prefs and Undo.
+- `check_mail_profile_resolution.py`: active profile selected by executable and
+  `compatibility.ini`, executable switch, no-`[Install]` profile, and ambiguous
+  refusal; `discover_mail_profiles` and `writable_betterbird_profile` agree.
+- `check_flea_ui_state.py`: pinned 12/20 px to `{"mode":"system"}`, unrelated
+  JSON preserved, exact Undo including missing file, malformed state refused,
+  missing parents created, and out-of-home `XDG_STATE_HOME` not redirected.
+- `check_font_transactions.py`, `check_flea_opacity.py`,
+  `check_portable_appearance.py`, and `check_fontconfig_policy.py` pass.
+
+Live acceptance: both monitors at 1.6667×; shell `base-size`/`body` 16 px and
+Dracula's derived heading 21 px; GTK/Qt Montserrat 12 and terminals Comic Code
+12; active Betterbird `mpsjivab.default-default` with `mail.uifontsize` 17,
+Montserrat and content default; Flea `display.textSize` system; reconciliation
+has no pending font actions. The owner closed apps and pressed APPLY CHANGES;
+the font transaction committed. Three independent reviewers inspected the code
+and live state and returned PASS. They found malformed-scale fallback,
+out-of-home state path, running-Flea overwrite, and profile-discovery
+consistency edge cases; all were fixed and retested.
+
+Limits: no broad live sweep of every application is claimed. Betterbird's
+transaction target is resolved when the plugin loads, so switching profiles
+requires a shell restart. A running Flea must be closed before Apply can adopt
+the system size. Browser/web-app content remains browser-controlled. The boot
+unlock and monitor-scale changes were operational and are not plugin code.
 ## Missing wallpaper recovery — November 3, v0.3.5
 
 The current wallpaper symlink pointed to a deleted image. Theme Apply refused

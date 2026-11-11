@@ -1,6 +1,23 @@
 # Project status
 
-## Current: v0.3.5 — November 3
+## Current: v0.3.6 — November 11
+
+Fonts now follow the selected point size on themes that pin shell type tokens,
+and the plugin manages Betterbird's interface size and Flea's Follow Omarchy
+state. Betterbird's active profile is resolved from its executable and
+`compatibility.ini`, not a profile name. The release also includes the newer
+Omarchy theme-script compatibility fix committed after v0.3.5.
+
+The owner confirmed the live application: both monitors at 1.6667×, shell body
+16 px, GTK/Qt and terminals at 12 pt, Betterbird's active profile at UI 17 with
+Montserrat, and Flea following Omarchy. Three independent reviewers checked the
+source and live state; the edge cases they found (malformed monitor output,
+out-of-home Flea state, running Flea, and profile-discovery consistency) were
+fixed and retested. The owner authorized this handoff, commit, push, and the
+0.3.6 Marketplace revision. See [release notes](RELEASE_NOTES_0.3.6.md) and
+[validation](RELEASE_VALIDATION.md).
+
+## Previous: v0.3.5 — November 3
 
 Apply now repairs a dangling current-wallpaper link using the selected background
 before Theme runs. Failed or interrupted repair restores the original link;

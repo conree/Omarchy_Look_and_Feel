@@ -11,7 +11,42 @@ import subprocess
 
 BEGIN = '/* BEGIN Look and Feel managed fonts */'
 END = '/* END Look and Feel managed fonts */'
-MAIL_KEYS = {'msgcompose.font_face', 'font.name.sans-serif.x-western', 'font.size.variable.x-western'}
+MAIL_KEYS = {'msgcompose.font_face', 'font.name.sans-serif.x-western', 'font.size.variable.x-western', 'mail.uifontsize'}
+# Gecko's interface font is CSS px. At the reference 5/3 compositor scale,
+# 12 pt needs 17 px, not the 16 px used for message content: the UI's smaller
+# x-height needs one extra px to match the shell/Flea text. The target scales
+# linearly with the focused monitor's compositor scale.
+MAIL_UI_REFERENCE_SCALE = 5 / 3
+MAIL_UI_REFERENCE_FACTOR = 17 / 16
+
+
+def monitor_scale():
+    try:
+        result = subprocess.run(['hyprctl', 'monitors', '-j'], capture_output=True, text=True, timeout=3, check=False)
+        if result.returncode:
+            return MAIL_UI_REFERENCE_SCALE
+        monitors = json.loads(result.stdout)
+        if not isinstance(monitors, list) or not monitors:
+            return MAIL_UI_REFERENCE_SCALE
+        valid = [monitor for monitor in monitors if isinstance(monitor, dict)]
+        if not valid:
+            return MAIL_UI_REFERENCE_SCALE
+        focused = next((monitor for monitor in valid if monitor.get('focused')), valid[0])
+        scale = float(focused.get('scale', MAIL_UI_REFERENCE_SCALE))
+        return scale if 1 <= scale <= 4 else MAIL_UI_REFERENCE_SCALE
+    except (AttributeError, OSError, ValueError, TypeError, subprocess.SubprocessError):
+        return MAIL_UI_REFERENCE_SCALE
+
+
+def mail_ui_px(content_px, ui_scale=None):
+    scale = monitor_scale() if ui_scale is None else ui_scale
+    try:
+        scale = float(scale)
+    except (TypeError, ValueError):
+        scale = MAIL_UI_REFERENCE_SCALE
+    if not 1 <= scale <= 4:
+        scale = MAIL_UI_REFERENCE_SCALE
+    return max(1, round(content_px * (scale / MAIL_UI_REFERENCE_SCALE) * MAIL_UI_REFERENCE_FACTOR))
 
 
 def typora_css(text, system_family, system_size, terminal_family, terminal_size):
@@ -40,9 +75,15 @@ def typora_css(text, system_family, system_size, terminal_family, terminal_size)
     ])
 
 
-def mail_preferences(text, family, size):
+def mail_preferences(text, family, size, ui_scale=None):
+    content_px = round(size * 96 / 72)
     values = {'msgcompose.font_face': family, 'font.name.sans-serif.x-western': family,
-              'font.size.variable.x-western': round(size * 96 / 72)}  # Gecko font sizes are CSS px.
+              'mail.uifontsize': mail_ui_px(content_px, ui_scale)}  # Gecko font sizes are CSS px.
+    # Gecko omits a preference equal to its default from prefs.js. The default
+    # variable-width size is 16 CSS px, so writing 16 would be dropped on the
+    # next mail save and the plugin would report it missing forever. None
+    # removes an explicit line and lets Gecko use its default.
+    values['font.size.variable.x-western'] = content_px if content_px != 16 else None
     mail_font_values(text)  # Refuse ambiguous or malformed existing preferences.
     return merge_mail_fonts(text, values)
 
@@ -148,7 +189,7 @@ def lock_mail_paths(paths):
                 del _held_profile_locks[key]
 
 
-def build_app_targets(system_family, system_size, terminal_family, terminal_size, desktop_ids):
+def build_app_targets(system_family, system_size, terminal_family, terminal_size, desktop_ids, ui_scale=None):
     from global_font_actions import _read, HOME, CONFIG
     from transaction import FILE_TARGETS
     targets, pending = {}, []
@@ -168,13 +209,13 @@ def build_app_targets(system_family, system_size, terminal_family, terminal_size
         else:
             path = HOME / relative
             if (path.parent / 'user.js').exists():
-                pending.append({'app': 'Betterbird', 'action': 'profile-override', 'reason': 'A user preference override needs review before changing composition fonts.'})
+                pending.append({'app': 'Betterbird', 'action': 'profile-override', 'reason': 'A user preference override needs review before changing its interface and composition fonts.'})
             else:
                 before = _read(path)
-                updated = mail_preferences(before, system_family, system_size)
+                updated = mail_preferences(before, system_family, system_size, ui_scale)
                 if mail_font_values(before) != mail_font_values(updated):
                     if mail_profile_busy(path):
-                        pending.append({'app': 'Betterbird', 'action': 'close-and-apply', 'reason': 'Save work and close the mail application to update composition fonts.'})
+                        pending.append({'app': 'Betterbird', 'action': 'close-and-apply', 'reason': 'Save work and close the mail application to update its interface and composition fonts.'})
                     else:
                         targets['betterbird-prefs'] = updated.encode()
     return targets, pending
@@ -231,7 +272,7 @@ def validate_mail_font_values(values):
     for key, value in values.items():
         if value is None:
             continue
-        if key == 'font.size.variable.x-western':
+        if key in {'font.size.variable.x-western', 'mail.uifontsize'}:
             if type(value) is not int or not 1 <= value <= 200:
                 raise ValueError('invalid mail font size')
         elif not isinstance(value, str) or len(value) > 300 or any(ord(c) < 32 for c in value):

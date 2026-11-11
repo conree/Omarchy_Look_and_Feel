@@ -12,8 +12,8 @@ HOME = Path.home()
 MAIL_CLIENTS = {
     "eu.betterbird.Betterbird.desktop": {
         "name": "Betterbird", "engine": "Gecko", "profileRoot": ".thunderbird",
-        "profileName": "default-default", "fontPrefs": [
-            "font.name.sans-serif.x-western", "font.size.variable.x-western", "msgcompose.font_face",
+        "profileName": None, "fontPrefs": [
+            "font.name.sans-serif.x-western", "font.size.variable.x-western", "msgcompose.font_face", "mail.uifontsize",
         ],
     },
     "thunderbird.desktop": {
@@ -45,8 +45,7 @@ def mail_client_definition(desktop_id: str) -> dict[str, object] | None:
     return {**value, "canonicalId": canonical}
 
 
-def discover_mail_profiles() -> list[dict[str, str]]:
-    """Resolve only the selected Gecko profile for installed mail clients."""
+def _gecko_profiles() -> list[dict[str, str]]:
     root = HOME / ".thunderbird"
     ini_path = root / "profiles.ini"
     parser = configparser.RawConfigParser(interpolation=None)
@@ -56,13 +55,13 @@ def discover_mail_profiles() -> list[dict[str, str]]:
         except (OSError, configparser.Error):
             parser = configparser.RawConfigParser(interpolation=None)
 
-    profiles: list[dict[str, str]] = []
     install_defaults = set()
     for section in parser.sections():
         if section.startswith("Install"):
             install_default = parser.get(section, "Default", fallback="")
             if install_default and "/" not in install_default and ".." not in Path(install_default).parts:
                 install_defaults.add(install_default)
+    profiles: list[dict[str, str]] = []
     for section in parser.sections():
         if not section.startswith("Profile"):
             continue
@@ -85,8 +84,36 @@ def discover_mail_profiles() -> list[dict[str, str]]:
             continue
         profiles.append({"name": name, "path": str(relative), "isDefault": parser.get(section, "Default", fallback=""),
                          "selectedByInstall": str(profile) in install_defaults})
+    return profiles
 
-    # Desktop IDs are also collected from the effective XDG application set.
+
+def _compatibility_app_dir(profile: dict[str, str]) -> Path | None:
+    path = HOME / profile["path"] / "compatibility.ini"
+    if path.is_symlink() or not path.is_file():
+        return None
+    ini = configparser.RawConfigParser(interpolation=None)
+    try:
+        ini.read(path, encoding="utf-8")
+        last_app = ini.get("Compatibility", "LastAppDir", fallback="")
+        return Path(last_app).resolve() if last_app else None
+    except (OSError, configparser.Error):
+        return None
+
+
+def _betterbird_app_dir() -> Path | None:
+    executable = shutil.which("betterbird")
+    if not executable:
+        return None
+    try:
+        return Path(executable).resolve().parent
+    except OSError:
+        return None
+
+
+def discover_mail_profiles() -> list[dict[str, str]]:
+    """Resolve the profile the installed client actually used last."""
+    profiles = _gecko_profiles()
+
     installed = set()
     data_home = Path(os.environ.get("XDG_DATA_HOME", str(HOME / ".local/share")))
     data_dirs = os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":")
@@ -105,16 +132,26 @@ def discover_mail_profiles() -> list[dict[str, str]]:
         result = {"desktopId": desktop_id, "name": client["name"], "engine": client["engine"],
                   "installed": str(present).lower(), "profile": "", "prefsPath": ""}
         if present and client["profileRoot"]:
-            expected_name = str(client["profileName"])
-            candidates = [p for p in profiles if p["name"] == expected_name]
+            def has_prefs(item):
+                return (HOME / item["path"] / "prefs.js").is_file()
             if desktop_id == "eu.betterbird.Betterbird.desktop":
-                selected = [p for p in candidates if p["selectedByInstall"]]
-                candidates = selected
+                # Use exactly the same rule as writable_betterbird_profile:
+                # the profile whose compatibility.ini names the installed
+                # executable. Profile names and Install sections are not
+                # authoritative once a user has more than one profile.
+                app_dir = _betterbird_app_dir()
+                candidates = [] if app_dir is None else [
+                    p for p in profiles
+                    if has_prefs(p) and _compatibility_app_dir(p) == app_dir
+                ]
             elif desktop_id == "thunderbird.desktop":
+                candidates = [p for p in profiles if p["name"] == str(client["profileName"])]
                 defaults = [p for p in profiles if p["isDefault"] == "1"]
                 if len(defaults) == 1:
                     candidates = defaults
-            if len(candidates) == 1 and (HOME / candidates[0]["path"] / "prefs.js").is_file():
+            else:
+                candidates = []
+            if len(candidates) == 1 and has_prefs(candidates[0]):
                 result["profile"] = candidates[0]["path"]
                 result["prefsPath"] = f"{candidates[0]['path']}/prefs.js"
         results.append(result)
@@ -122,25 +159,20 @@ def discover_mail_profiles() -> list[dict[str, str]]:
 
 
 def writable_betterbird_profile() -> str | None:
-    """Require profile provenance from the actual installed Betterbird path."""
-    executable = shutil.which("betterbird")
-    if not executable:
+    """Resolve the profile Betterbird last used from the installed executable.
+
+    Profile names are user-editable and not tied to an install. Match the
+    executable directory against each profile's compatibility.ini instead, and
+    refuse an ambiguous match rather than writing the wrong profile.
+    """
+    app_dir = _betterbird_app_dir()
+    if app_dir is None:
         return None
-    app_dir = Path(executable).resolve().parent
-    resolved = []
-    for item in discover_mail_profiles():
-        if item.get("name") != "Betterbird" or not item.get("prefsPath"):
+    matches = []
+    for item in _gecko_profiles():
+        prefs = HOME / item["path"] / "prefs.js"
+        if not prefs.is_file():
             continue
-        prefs = HOME / item["prefsPath"]
-        compatibility = prefs.parent / "compatibility.ini"
-        if compatibility.is_symlink() or not compatibility.is_file():
-            continue
-        ini = configparser.RawConfigParser(interpolation=None)
-        try:
-            ini.read(compatibility, encoding="utf-8")
-            last_app = ini.get("Compatibility", "LastAppDir", fallback="")
-            if last_app and Path(last_app).resolve() == app_dir:
-                resolved.append(item["prefsPath"])
-        except (OSError, configparser.Error):
-            continue
-    return resolved[0] if len(resolved) == 1 else None
+        if _compatibility_app_dir(item) == app_dir:
+            matches.append(item["path"] + "/prefs.js")
+    return matches[0] if len(matches) == 1 else None

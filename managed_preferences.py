@@ -17,8 +17,11 @@ from contextvars import ContextVar
 
 AUTOMATIC = ContextVar("automatic_appearance_operation", default=False)
 
+from shell_preferences import FONT_FIELDS as SHELL_FONT_FIELDS
+
 FIELDS = {
-    'omarchy-shell-style': {'font/base-size', 'flea/background-alpha'},
+    'omarchy-shell-style': set(SHELL_FONT_FIELDS) | {'flea/background-alpha'},
+    'flea-ui-state': {'display/textSize'},
     'fontconfig-monospace': {'monospace-rule'},
     "hypr-qt-integration": {"integration"},
     'wezterm-config': {'fonts', 'theme', 'opacity'},
@@ -93,6 +96,9 @@ def decode(target, raw):
     if target == 'omarchy-shell-style':
         from shell_preferences import decode as decode_shell
         return decode_shell(raw)
+    if target == 'flea-ui-state':
+        from flea_preferences import decode as decode_flea
+        return decode_flea(raw)
     if target == 'terminal-blur-config':
         from blur_actions import decode as decode_blur
         return decode_blur(raw)
@@ -140,6 +146,9 @@ def encode(target, data):
     if target == 'omarchy-shell-style':
         from shell_preferences import encode as encode_shell
         return encode_shell(data)
+    if target == 'flea-ui-state':
+        from flea_preferences import encode as encode_flea
+        return encode_flea(data)
     if target == 'terminal-blur-config':
         from blur_actions import encode as encode_blur
         return encode_blur(data)

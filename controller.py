@@ -21,6 +21,7 @@ from global_font_actions import TERMINAL_COMMANDS, build_global_font_targets, _r
 from app_font_actions import build_app_targets
 from browser_font_actions import build as build_browser_targets
 from terminal_reload import reload_terminals
+from shell_preferences import FONT_FIELDS as SHELL_FONT_FIELDS
 from manual_app_inspector import inspect_app
 from manual_app_registry import clear_registry as clear_manual_app_registry, register_audit_result, registry_status, validated_apply_status
 from transaction import FILE_TARGETS, TransactionError, apply_file_targets, has_committed_transaction, recover_pending, rollback_latest, transaction_status
@@ -682,6 +683,15 @@ def _preflight_font_targets(targets: dict[str, bytes], *, validate_content: bool
             decode(target, targets[target])
 
 
+def _flea_running() -> bool:
+    try:
+        result = subprocess.run(['pgrep', '--euid', str(os.getuid()), '--exact', '[fF]lea'],
+                                capture_output=True, timeout=3, check=False)
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
 def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: str, terminal_size: int, *, automatic=False) -> dict[str, object]:
     fonts = {str(entry["id"]): str(entry["name"]) for entry in font_entries()}
     system_family = fonts.get(system_font_id)
@@ -740,6 +750,24 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
             pending.extend(app_pending)
         except (OSError, RuntimeError, ValueError, subprocess.SubprocessError):
             pending.append({"app": name, "action": "review", "reason": "Its font settings could not be safely read or updated; they were skipped."})
+    flea_state = HOME / FILE_TARGETS['flea-ui-state']
+    if 'com.thisisgm.flea.desktop' in desktop_ids or (shutil.which('flea') and flea_state.exists()):
+        try:
+            _preflight_font_targets({'flea-ui-state': b''})
+            import flea_preferences
+            flea_target = flea_preferences.build()
+            _preflight_font_targets({'flea-ui-state': flea_target}, validate_content=True)
+            if flea_target != read_font_config(flea_state, allow_missing=True).encode():
+                if _flea_running():
+                    # Flea owns this file while running and can rewrite its old
+                    # in-memory size on exit. Do not write a change it will lose.
+                    pending.append({'app': 'Flea', 'action': 'close-and-apply',
+                                    'reason': 'Close Flea, then Apply again to adopt the system text size.'})
+                else:
+                    targets['flea-ui-state'] = flea_target
+        except (OSError, RuntimeError, ValueError):
+            pending.append({'app': 'Flea', 'action': 'review',
+                            'reason': 'Its system text-size setting could not be safely read or updated; it was skipped.'})
     try:
         if 'brave-browser.desktop' in desktop_ids:
             _preflight_font_targets({'brave-default-preferences': b''})
@@ -785,8 +813,9 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         targets["appearance-policy"] = policy.update("fonts", {"systemId": system_font_id, "systemSize": system_size,
                                                                 "terminalId": terminal_font_id, "terminalSize": terminal_size})
     ownership = {
-        'omarchy-shell-style': {'font/base-size'},
+        'omarchy-shell-style': set(SHELL_FONT_FIELDS),
         'fontconfig-monospace': {'monospace-rule'},
+        'flea-ui-state': {'display/textSize'},
         'wezterm-config': {'fonts'},
         'appearance-policy': {'fonts'},
         'gtk3-settings': {'Settings/gtk-font-name'},

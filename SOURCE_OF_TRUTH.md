@@ -7,6 +7,14 @@ The owner's installed plugin at
 `/home/si/.config/omarchy/plugins/si.omarchy-look-and-feel` is a symlink to this
 repository. Other users receive their own plugin-manager checkout.
 
+The 0.3.6 release scales shell type tokens pinned by the active theme, manages
+Betterbird's interface font size from the compositor scale, resolves Betterbird's
+active profile from `compatibility.ini`, and makes Flea follow Omarchy's text
+size through a journaled target. It also includes the newer Omarchy theme-script
+compatibility fix committed after v0.3.5. See `RELEASE_NOTES_0.3.6.md` and
+`RELEASE_VALIDATION.md` for scope and evidence. The `v0.3.6` tag identifies the
+release revision once pushed.
+
 The 0.3.5 release fixes Apply stopping at Theme when the current wallpaper link
 points to a missing image. See `RELEASE_NOTES_0.3.5.md` and
 `RELEASE_VALIDATION.md` for scope and evidence. The `v0.3.5` tag identifies the

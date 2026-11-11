@@ -45,6 +45,16 @@ try:
     _data_home_rel = _data_home.relative_to(Path.home())
 except ValueError:
     _data_home_rel = Path(".local/share")
+_state_home = Path(os.environ.get("XDG_STATE_HOME", str(Path.home() / ".local/state")))
+if not _state_home.is_absolute():
+    _state_home = Path.home() / ".local/state"
+try:
+    _state_home_rel = _state_home.relative_to(Path.home())
+except ValueError:
+    # Do not silently redirect an out-of-home XDG_STATE_HOME to ~/.local/state:
+    # Flea would read a different file. The absolute target is rejected by the
+    # transaction boundary and reported as a review action.
+    _state_home_rel = None
 _ghostty_dir = _configured_home / "ghostty"
 _ghostty_filename = "config.ghostty" if (_ghostty_dir / "config.ghostty").exists() else "config"
 # Follow WezTerm's documented config lookup; the transaction boundary rejects
@@ -93,6 +103,8 @@ FILE_TARGETS: dict[str, str] = {
     "qt6ct-colors": (_configured_home_rel / "qt6ct" / "colors" / "look-and-feel.conf").as_posix(),
     "typora-settings": (_configured_home_rel / "Typora" / "conf" / "conf.user.json").as_posix(),
     "typora-base-user-css": (_configured_home_rel / "Typora" / "themes" / "base.user.css").as_posix(),
+    "flea-ui-state": ((_state_home_rel / "flea" / "ui.json").as_posix()
+                       if _state_home_rel is not None else str(_state_home / "flea" / "ui.json")),
     "brave-default-preferences": (_configured_home_rel / "BraveSoftware" / "Brave-Browser" / "Default" / "Preferences").as_posix(),
 }
 # Profile discovery returns no target when selection is ambiguous.

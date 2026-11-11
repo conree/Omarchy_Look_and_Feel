@@ -347,6 +347,70 @@ def _qt_font_value(original: str, family: str, size: int, version: int) -> str:
     return result
 
 
+SHELL_FONT_FACTORS = {
+    'caption': 10 / 12, 'body-small': 11 / 12, 'body': 1.0,
+    'subtitle': 13 / 12, 'title': 14 / 12, 'heading': 16 / 12,
+    'display': 2.0, 'display-large': 28 / 12,
+    'icon-large': 1.5,
+}
+
+
+def _shell_font_plan(system_size: int) -> tuple[int, dict[str, str]]:
+    """Scale every shell type token to the selected point size.
+
+    Omarchy's theme shell.toml may pin caption/body/heading and the other
+    tokens at its own 12 px design baseline. Changing only base-size then
+    leaves those pinned sizes untouched. Read the active theme and write the
+    pinned sizes scaled by the requested baseline, while filling in the
+    standard multipliers for any token the theme leaves derived.
+    """
+    import shell_preferences
+    desired = int(system_size * 96 / 72 + 0.5)
+    theme_path = HOME / ".local/state/omarchy/current/theme/shell.toml"
+    try:
+        theme_text = _read(theme_path, allow_missing=True)
+        theme_values = shell_preferences.decode(theme_text.encode()) if theme_text else {}
+    except (OSError, ValueError, TransactionError):
+        theme_values = {}
+
+    def line_value(field: str) -> int | None:
+        line = theme_values.get(field)
+        if not line:
+            return None
+        match = re.search(r'=\s*(\d+(?:\.\d+)?)\s*(?:#.*)?$', line)
+        return int(float(match.group(1))) if match else None
+
+    base = line_value('font/base-size') or 12
+    if not 1 <= base <= 96:
+        base = 12
+    pinned = {
+        token: value for token in shell_preferences.FONT_TOKENS
+        if (value := line_value('font/' + token)) is not None
+    }
+    scale = desired / base
+    sizes = {}
+    for token in shell_preferences.FONT_TOKENS:
+        if token in {'icon-small', 'icon'}:
+            continue
+        if token in pinned:
+            size = int(pinned[token] * scale + 0.5)
+        else:
+            size = int(desired * SHELL_FONT_FACTORS[token] + 0.5)
+        sizes[token] = max(1, min(256, size))
+
+    # Omarchy derives these two icons from body-small and title rather than
+    # from fixed multipliers. Follow that dependency when the theme leaves the
+    # icon token unpinned instead of using the 12 px defaults for its source.
+    for token, source in (('icon-small', 'body-small'), ('icon', 'title')):
+        if token in pinned:
+            size = int(pinned[token] * scale + 0.5)
+        else:
+            size = sizes[source]
+        sizes[token] = max(1, min(256, size))
+    return desired, {f'font/{token}': f'{token} = {sizes[token]}\n'
+                     for token in shell_preferences.FONT_TOKENS}
+
+
 def build_global_font_targets(system_family: str, system_size: int, terminal_family: str, terminal_size: int,
                               terminal_ids: set[str] | None = None) -> tuple[dict[str, bytes], int]:
     """Build reversible file targets for desktop, shell, and detected terminals."""
@@ -406,10 +470,11 @@ def build_global_font_targets(system_family: str, system_size: int, terminal_fam
     shell_style_path = CONFIG / "omarchy/shell.toml"
     shell_style = _read(shell_style_path, allow_missing=True)
     # The chooser uses points; Omarchy shell tokens use logical pixels.
-    shell_size = round(system_size * 96 / 72)
+    shell_size, shell_tokens = _shell_font_plan(system_size)
     import shell_preferences
     shell_values = shell_preferences.decode(shell_style.encode())
     shell_values['font/base-size'] = f'base-size = {shell_size}\n'
+    shell_values.update(shell_tokens)
     targets["omarchy-shell-style"] = shell_preferences.encode(shell_values)
 
     global_selection = {

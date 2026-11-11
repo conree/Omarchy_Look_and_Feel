@@ -3,7 +3,16 @@ import math
 import re
 import tomllib
 
-FIELDS = {'font/base-size', 'flea/background-alpha'}
+# Omarchy themes may pin individual type sizes instead of deriving every size
+# from base-size. The plugin owns these along with base-size so a selected
+# point size reaches the bar, panels and lock screen even when the theme pins
+# its own scale.
+FONT_TOKENS = (
+    'caption', 'body-small', 'body', 'subtitle', 'title', 'heading',
+    'display', 'display-large', 'icon-small', 'icon', 'icon-large',
+)
+FONT_FIELDS = frozenset({'font/base-size', *(f'font/{token}' for token in FONT_TOKENS)})
+FIELDS = {*FONT_FIELDS, 'flea/background-alpha'}
 
 
 def _locations(text, field):
