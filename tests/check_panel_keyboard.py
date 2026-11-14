@@ -165,6 +165,11 @@ Window {
 '''
 (fixture/'focus.qml').write_text(focus_qml)
 window.setVisible(False)
+# Dispose of the earlier generic TextField fixture before probing clipboard
+# reads: hidden native editors retain their clipboard subscription too.
+from PySide6.QtCore import QCoreApplication, QEvent
+engine.deleteLater()
+QCoreApplication.sendPostedEvents(None, QEvent.DeferredDelete)
 focus_engine = QQmlApplicationEngine()
 focus_engine.load(QUrl.fromLocalFile(str(fixture/'focus.qml')))
 assert focus_engine.rootObjects(), 'Production styled controls/focus helper did not load'
@@ -194,6 +199,50 @@ focused('bottomPicker'); inside('bottomPicker')
 assert viewport.property('contentY') > 200, 'Offscreen selector was not revealed'
 key(Qt.Key_Tab)
 focused('bottomEditor'); inside('bottomEditor')
+editor = window.findChild(QQuickItem, 'bottomEditor')
+for value in (Qt.Key_H, Qt.Key_J, Qt.Key_K, Qt.Key_L, Qt.Key_Space, Qt.Key_X):
+    key(value)
+assert editor.property('text') == 'hjkl x', 'Clipboard-free search lost typed characters'
+key(Qt.Key_Left)
+key(Qt.Key_Backspace)
+assert editor.property('text') == 'hjklx'
+key(Qt.Key_A, Qt.ControlModifier)
+key(Qt.Key_B)
+assert editor.property('text') == 'b', 'Select-all replacement failed'
+key(Qt.Key_Delete)
+assert editor.property('text') == 'b'
+key(Qt.Key_Home)
+key(Qt.Key_Delete)
+assert editor.property('text') == '', 'Delete-at-cursor failed'
+editor.setProperty('text', 'x' * 256)
+key(Qt.Key_End)
+key(Qt.Key_Y)
+assert editor.property('text') == 'x' * 256, 'Search input exceeded its size bound'
+# Verify the instantiated production controls have no native clipboard reader,
+# including any implicit editor a ComboBox style might otherwise create.
+from PySide6.QtCore import QObject, QMimeData
+assert not any(item.inherits('QQuickTextInput') or item.inherits('QQuickTextEdit')
+               for item in window.findChildren(QObject)), 'A native clipboard-connected editor remains'
+
+
+class ClipboardProbe(QMimeData):
+    requests = 0
+
+    def formats(self):
+        return ['text/plain']
+
+    def retrieveData(self, mime_type, preferred_type):
+        self.requests += 1
+        return 'clipboard probe'
+
+
+clipboard_probe = ClipboardProbe()
+app.clipboard().setMimeData(clipboard_probe)
+app.processEvents()
+assert clipboard_probe.requests == 0, 'Production controls fetched clipboard text without Paste'
+key(Qt.Key_V, Qt.ControlModifier)
+assert clipboard_probe.requests == 0, 'Clipboard-free field attempted Paste'
+app.clipboard().clear()
 key(Qt.Key_Tab)
 focused('monospaceFilter'); inside('monospaceFilter')
 scrolled = viewport.property('contentY')
@@ -240,7 +289,7 @@ import shutil
 import time
 assert shutil.which('quickshell'), 'Installed Quickshell is required for native FileView coverage'
 start = production.index('  FileView {\n    id: observedThemeName')
-end = production.index('\n  Process {', start)
+end = production.index('\n  BoundedProcess {', start)
 watcher = production[start:end]
 theme_name = fixture/'.local/state/omarchy/current/theme.name'
 theme_name.parent.mkdir(parents=True, exist_ok=True)

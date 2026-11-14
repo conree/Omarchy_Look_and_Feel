@@ -815,15 +815,76 @@ Panel {
       }
     }
   }
-  component SearchField: Controls.TextField {
+  // Native TextInput/TextField subscribes to Wayland clipboard changes even
+  // when hidden. Use key events and plain display text; never access clipboard.
+  component SearchField: Controls.Control {
     id: input
+    property string text: ""
+    property string placeholderText: ""
+    property int cursorPosition: text.length
+    property bool allSelected: false
+    signal textEdited()
+    signal accepted()
+    function clear() { text = ""; cursorPosition = 0; allSelected = false }
+    function edit(value, position) {
+      text = value
+      cursorPosition = position
+      allSelected = false
+      textEdited()
+    }
+    onTextChanged: { cursorPosition = Math.min(cursorPosition, text.length); allSelected = false }
     onActiveFocusChanged: if (activeFocus) root.revealControl(input)
     implicitHeight: root.selectorHeight + 6
+    focusPolicy: Qt.StrongFocus
     font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize
-    color: root.popupForeground; placeholderTextColor: root.mutedColor
-    selectionColor: root.accentColor; selectedTextColor: root.popupBackground
     leftPadding: 12; rightPadding: 12
-    background: Rectangle { color: root.surfaceColor; radius: 3; border.color: input.activeFocus ? root.accentColor : root.lineColor; border.width: input.activeFocus ? 2 : 1 }
+    Accessible.role: Accessible.EditableText
+    Accessible.description: "Type an application name. Clipboard paste is unavailable. Control+A selects all."
+    background: Rectangle { color: input.allSelected ? root.accentColor : root.surfaceColor; radius: 3; border.color: input.activeFocus ? root.accentColor : root.lineColor; border.width: input.activeFocus ? 2 : 1 }
+    contentItem: Item {
+      clip: true
+      TextMetrics { id: prefix; font: input.font; text: input.text.slice(0, input.cursorPosition) }
+      Text {
+        id: display
+        x: -Math.max(0, prefix.advanceWidth - parent.width + 3)
+        height: parent.height
+        textFormat: Text.PlainText
+        text: input.text || input.placeholderText
+        font: input.font
+        color: input.allSelected ? root.popupBackground : (input.text ? root.popupForeground : root.mutedColor)
+        verticalAlignment: Text.AlignVCenter
+      }
+      Rectangle {
+        x: display.x + prefix.advanceWidth
+        anchors.verticalCenter: parent.verticalCenter
+        width: 1; height: input.font.pixelSize + 3
+        visible: input.activeFocus && !input.allSelected
+        color: root.popupForeground
+      }
+    }
+    MouseArea { anchors.fill: parent; onClicked: { input.forceActiveFocus(); input.cursorPosition = input.text.length } }
+    Keys.onPressed: function(event) {
+      if (event.key === Qt.Key_Tab || event.key === Qt.Key_Backtab || event.key === Qt.Key_Escape) { event.accepted = false; return }
+      event.accepted = true
+      if (event.modifiers & Qt.ControlModifier) {
+        if (event.key === Qt.Key_A) input.allSelected = true
+        return
+      }
+      if (event.modifiers & (Qt.AltModifier | Qt.MetaModifier)) return
+      if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) { input.accepted(); return }
+      if (event.key === Qt.Key_Home) { input.cursorPosition = 0; input.allSelected = false; return }
+      if (event.key === Qt.Key_End) { input.cursorPosition = input.text.length; input.allSelected = false; return }
+      if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) {
+        input.cursorPosition = Math.max(0, Math.min(input.text.length, input.cursorPosition + (event.key === Qt.Key_Left ? -1 : 1)))
+        input.allSelected = false; return
+      }
+      var before = input.allSelected ? "" : input.text.slice(0, input.cursorPosition)
+      var after = input.allSelected ? "" : input.text.slice(input.cursorPosition)
+      if (event.key === Qt.Key_Backspace) { input.edit(before.slice(0, -1) + after, Math.max(0, before.length - 1)); return }
+      if (event.key === Qt.Key_Delete) { input.edit(before + (input.allSelected ? "" : after.slice(1)), before.length); return }
+      if (event.text && !/[\x00-\x1f\x7f]/.test(event.text) && before.length + after.length + event.text.length <= 256)
+        input.edit(before + event.text + after, before.length + event.text.length)
+    }
   }
   component ResultNotice: ColumnLayout {
     id: notice
@@ -1334,7 +1395,7 @@ Panel {
               FieldLabel { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Audit Applications not Automatically Configured by the Plugin" }
               RowLayout {
                 Layout.fillWidth: true
-                SearchField { id: manualAppField; Layout.fillWidth: true; enabled: !root.busy; placeholderText: "App name, launcher, or package"; text: root.manualAppQuery; onTextEdited: { root.manualAppQuery = text; root.manualAppStatus = "" } onAccepted: root.inspectManualApp(); Accessible.name: "Application to audit" }
+                SearchField { id: manualAppField; Layout.fillWidth: true; enabled: !root.busy; placeholderText: "Type app name, launcher, or package"; text: root.manualAppQuery; onTextEdited: { root.manualAppQuery = text; root.manualAppStatus = "" } onAccepted: root.inspectManualApp(); Accessible.name: "Application to audit" }
                 ActionButton { text: root.manualAppActionRunning ? "Auditing…" : "Audit app"; enabled: !root.busy && root.manualAppQuery.trim().length >= 2; onClicked: root.inspectManualApp() }
               }
               Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; visible: !!root.manualAppStatus; text: root.manualAppStatus; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
@@ -1557,16 +1618,11 @@ Panel {
     onLoadFailed: root.observedTheme = ""
   }
 
-  Process {
+  BoundedProcess {
     id: inventoryProcess
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.adoptInventory(text)
-    }
-    onExited: function(code) {
-      if (code !== 0) {
-        root.inventoryError = "Could not refresh the catalog. Your selections are kept; try again."
-      }
+    onCompleted: {
+      if (resultExitCode === 0) root.adoptInventory(outputText)
+      else root.inventoryError = "Could not refresh the catalog. Your selections are kept; try again."
     }
   }
 
@@ -1697,103 +1753,34 @@ Panel {
     }
   }
 
-  Process {
+  BoundedProcess {
     id: appearanceActionProcess
-    property string outputText: ""
-    property string errorText: ""
-    property int resultExitCode: -1
-    property bool stdoutFinished: false
-    property bool stderrFinished: false
-    property bool exitSeen: false
-    property bool handled: false
-    onRunningChanged: if (running) {
-      outputText = ""
-      errorText = ""
-      resultExitCode = -1
-      stdoutFinished = false
-      stderrFinished = false
-      exitSeen = false
-      handled = false
-    }
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
-      appearanceActionProcess.outputText = String(text || "")
-      appearanceActionProcess.stdoutFinished = true
-      root.finishAppearanceAction()
-    } }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      appearanceActionProcess.errorText = String(text || "")
-      appearanceActionProcess.stderrFinished = true
-      root.finishAppearanceAction()
-    } }
-    onExited: function(code) {
-      appearanceActionProcess.resultExitCode = code
-      appearanceActionProcess.exitSeen = true
-      root.finishAppearanceAction()
-    }
+    // Authentication and boot rebuilds already allow 40 minutes in the helper.
+    timeoutMs: root.appearanceActionKind === "unlock" ? 2430000 : 120000
+    onCompleted: root.finishAppearanceAction()
   }
 
-  Process {
+  BoundedProcess {
     id: globalFontProcess
-    property string outputText: ""
-    property string errorText: ""
-    property int resultExitCode: -1
-    property bool stdoutFinished: false
-    property bool stderrFinished: false
-    property bool exitSeen: false
-    property bool handled: false
-    onRunningChanged: if (running) {
-      outputText = ""
-      errorText = ""
-      resultExitCode = -1
-      stdoutFinished = false
-      stderrFinished = false
-      exitSeen = false
-      handled = false
-    }
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
-      globalFontProcess.outputText = String(text || "")
-      globalFontProcess.stdoutFinished = true
-      root.finishGlobalFontAction()
-    } }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      globalFontProcess.errorText = String(text || "")
-      globalFontProcess.stderrFinished = true
-      if (globalFontProcess.errorText.trim()) console.warn("Look and Feel font command:", globalFontProcess.errorText)
-      root.finishGlobalFontAction()
-    } }
-    onExited: function(code) {
-      globalFontProcess.resultExitCode = code
-      globalFontProcess.exitSeen = true
-      root.finishGlobalFontAction()
-    }
+    onCompleted: root.finishGlobalFontAction()
   }
 
-  Process {
+  BoundedProcess {
     id: manualAppProcess
-    property string outputText: ""; property string errorText: ""; property int resultExitCode: -1
-    property bool stdoutFinished: false; property bool stderrFinished: false; property bool exitSeen: false; property bool handled: false
-    onRunningChanged: if (running) { outputText = ""; errorText = ""; resultExitCode = -1; stdoutFinished = false; stderrFinished = false; exitSeen = false; handled = false }
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: { manualAppProcess.outputText = String(text || ""); manualAppProcess.stdoutFinished = true; root.finishManualAuditProcess(manualAppProcess, false) } }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: { manualAppProcess.errorText = String(text || ""); manualAppProcess.stderrFinished = true; root.finishManualAuditProcess(manualAppProcess, false) } }
-    onExited: function(code) { resultExitCode = code; exitSeen = true; root.finishManualAuditProcess(manualAppProcess, false) }
+    onCompleted: root.finishManualAuditProcess(manualAppProcess, false)
   }
 
-  Process {
+  BoundedProcess {
     id: manualAuditClearProcess
-    property string outputText: ""; property string errorText: ""; property int resultExitCode: -1
-    property bool stdoutFinished: false; property bool stderrFinished: false; property bool exitSeen: false; property bool handled: false
-    onRunningChanged: if (running) { outputText = ""; errorText = ""; resultExitCode = -1; stdoutFinished = false; stderrFinished = false; exitSeen = false; handled = false }
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: { manualAuditClearProcess.outputText = String(text || ""); manualAuditClearProcess.stdoutFinished = true; root.finishManualAuditProcess(manualAuditClearProcess, true) } }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: { manualAuditClearProcess.errorText = String(text || ""); manualAuditClearProcess.stderrFinished = true; root.finishManualAuditProcess(manualAuditClearProcess, true) } }
-    onExited: function(code) { resultExitCode = code; exitSeen = true; root.finishManualAuditProcess(manualAuditClearProcess, true) }
+    onCompleted: root.finishManualAuditProcess(manualAuditClearProcess, true)
   }
 
-  Process {
+  BoundedProcess {
     id: appearanceAuditProcess
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: root.adoptAppearanceAudit(text) }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-          if (String(text || "").trim()) root.appearanceAuditStatus = "The appearance audit could not be completed."
-    } }
-    onRunningChanged: if (!running) root.appearanceAuditRunning = false
+    onCompleted: {
+      if (resultExitCode === 0) root.adoptAppearanceAudit(outputText)
+      else root.appearanceAuditStatus = "The appearance audit could not be completed."
+      root.appearanceAuditRunning = false
+    }
   }
 }

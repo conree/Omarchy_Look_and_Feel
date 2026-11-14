@@ -1,6 +1,24 @@
 # Project status
 
-## Current: v0.3.6 — November 11
+## Current: marketplace security fix — November 14
+
+The follow-up to Marketplace issue #14718 removes the clipboard-connected
+Applications editor, defers panel creation until explicitly opened, and bounds
+panel/reconciliation commands by total time and combined output. Failed starts
+complete through a watchdog; a relay/guardian supervises ordinary command
+process groups through cancellation and component destruction. Boot operations
+retain their separate authenticated recovery protocol and longer deadline.
+
+The reviewed revision stalled under a real continuing clipboard offer on
+Qt 6.12/Wayland even with its panel closed. The fixed closed, open, and reclosed
+panel received offers without requesting text and maintained GUI heartbeats.
+Independent review checked the native protocol logs and process-lifecycle
+checks. This does not claim an OOM test or new privileged boot acceptance.
+Search paste and input-method composition are unavailable; typing and keyboard
+editing remain supported. The owner authorized committing and pushing this
+focused fix. No version tag or release is created by this update.
+
+## Previous: v0.3.6 — November 11
 
 Fonts now follow the selected point size on themes that pin shell type tokens,
 and the plugin manages Betterbird's interface size and Flea's Follow Omarchy

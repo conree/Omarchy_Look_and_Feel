@@ -1,1 +1,2 @@
 singleton ShellFontBridge 1.0 ShellFontBridge.qml
+BoundedProcess 1.0 BoundedProcess.qml

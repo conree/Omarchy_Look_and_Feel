@@ -53,10 +53,10 @@ BarWidget {
     }
     onLoadFailed: { root.repairEnabled = true; root.repairSettingLoaded = true }
   }
-  Process {
+  BoundedProcess {
     id: repairSettingProcess
-    onExited: function(code) {
-      if (code !== 0) root.repairSettingError = "Could not save automatic repair setting."
+    onCompleted: {
+      if (resultExitCode !== 0) root.repairSettingError = "Could not save automatic repair setting."
       else repairSetting.reload()
     }
   }
@@ -247,46 +247,16 @@ BarWidget {
     if (root.auditRefreshPending) Qt.callLater(root.tryReconcile)
   }
 
-  Process {
+  BoundedProcess {
     id: reconcileProcess
-    property string outputText: ""
-    property string errorText: ""
-    property int resultExitCode: -1
-    property bool stdoutFinished: false
-    property bool stderrFinished: false
-    property bool exitSeen: false
-    property bool handled: false
-    property bool started: false
     property int auditGeneration: 0
     property var sectionGeneration: ({})
     command: ["/usr/bin/python3", "-B", decodeURIComponent(String(Qt.resolvedUrl("controller.py")).replace(/^file:\/\//, "")), "reconcile"]
     onRunningChanged: if (running) {
-      started = true
       auditGeneration = root.auditGeneration
       sectionGeneration = Object.assign({}, root.sectionGeneration)
-      outputText = ""
-      errorText = ""
-      resultExitCode = -1
-      stdoutFinished = false
-      stderrFinished = false
-      exitSeen = false
-      handled = false
-    } else if (root.auditRefreshPending && handled) Qt.callLater(root.tryReconcile)
-    stdout: StdioCollector { waitForEnd: true; onStreamFinished: {
-      reconcileProcess.outputText = String(text || "")
-      reconcileProcess.stdoutFinished = true
-      root.finishReconciliation()
-    } }
-    stderr: StdioCollector { waitForEnd: true; onStreamFinished: {
-      reconcileProcess.errorText = String(text || "")
-      reconcileProcess.stderrFinished = true
-      root.finishReconciliation()
-    } }
-    onExited: function(code) {
-      reconcileProcess.resultExitCode = code
-      reconcileProcess.exitSeen = true
-      root.finishReconciliation()
     }
+    onCompleted: root.finishReconciliation()
   }
 
   function open() {
@@ -330,9 +300,8 @@ BarWidget {
 
   Loader {
     id: panelLoader
-    // Prepare the catalog and decode static example images before the first
-    // click. The panel remains closed until explicitly requested.
-    active: true
+    // Create panel controls only after the first explicit open request.
+    active: false
     source: Qt.resolvedUrl("Panel.qml")
     visible: false
     onLoaded: {

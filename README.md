@@ -103,6 +103,14 @@ A failed step stops later steps. Completed steps remain applied and can be
 undone from their section. Switching tabs preserves your draft choices;
 restarting the shell clears unapplied drafts.
 
+The Applications search accepts up to 256 typed characters, with Backspace,
+Delete, arrow keys, Home/End and Control+A. Clipboard paste and input-method
+composition are unavailable: the field deliberately avoids Qt's native editor
+and does not read clipboard offers. Commands have a two-minute
+total deadline and an 8 MiB combined output limit. Authenticated boot artwork
+operations retain a separate 40-minute allowance; interrupted boot operations
+use the existing recovery action.
+
 ## Undo or stop managing appearance
 
 Use **Undo theme**, **Undo opacity**, **Undo blur**, **Undo fonts**, or the **Undo** beside Background and Icons
