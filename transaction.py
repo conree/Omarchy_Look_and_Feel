@@ -106,6 +106,7 @@ FILE_TARGETS: dict[str, str] = {
     "flea-ui-state": ((_state_home_rel / "flea" / "ui.json").as_posix()
                        if _state_home_rel is not None else str(_state_home / "flea" / "ui.json")),
     "brave-default-preferences": (_configured_home_rel / "BraveSoftware" / "Brave-Browser" / "Default" / "Preferences").as_posix(),
+    "mailcraft-appearance": (_configured_home_rel / "mailcraft" / "appearance.json").as_posix(),
 }
 # Profile discovery returns no target when selection is ambiguous.
 from mail_font_adapters import writable_betterbird_profile

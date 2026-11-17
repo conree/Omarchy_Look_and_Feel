@@ -202,6 +202,13 @@ def build_app_targets(system_family, system_size, terminal_family, terminal_size
             running = subprocess.run(['pgrep', '--euid', str(os.getuid()), '--exact', '[Tt]ypora'], capture_output=True, timeout=5)
             if running.returncode != 1:
                 pending.append({'app': 'Typora', 'action': 'reopen', 'reason': 'Reload or reopen the document to load its updated font stylesheet.'})
+    import mailcraft_adapter
+    if mailcraft_adapter.installed(desktop_ids):
+        try:
+            colors = mailcraft_adapter.current_colors()
+            targets[mailcraft_adapter.TARGET] = mailcraft_adapter.appearance(colors, system_family, system_size)
+        except (OSError, ValueError, KeyError) as exc:
+            pending.append({'app': 'MailCraft', 'action': 'theme-unreadable', 'reason': f'The current theme palette could not be read: {exc}'})
     if 'eu.betterbird.Betterbird.desktop' in desktop_ids:
         relative = FILE_TARGETS.get('betterbird-prefs')
         if not relative:
