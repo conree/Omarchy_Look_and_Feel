@@ -52,7 +52,8 @@ def follow_in_mailcraft(percent):
         path = Path.home() / tx.FILE_TARGETS[mailcraft_adapter.TARGET]
         if path.exists() and path.read_bytes() == wanted:
             return
-        tx.apply_file_targets({mailcraft_adapter.TARGET: wanted}, label=MAILCRAFT_LABEL)
+        tx.apply_file_targets({mailcraft_adapter.TARGET: wanted}, label=MAILCRAFT_LABEL,
+                              owned_fields={mailcraft_adapter.TARGET: {'opacity'}})
     except Exception:  # noqa: BLE001 - an optional app never stops Flea's change
         return
 

@@ -238,6 +238,7 @@ def apply_theme(mode, light, dark, *, automatic=False):
                                                owned_fields={
                                                    'wezterm-config': {'theme'},
                                                    'appearance-policy': {'theme'},
+                                                   'mailcraft-appearance': {'mode', 'colors'},
                                                    'gtk3-settings': {'Settings/gtk-theme-name', 'Settings/gtk-application-prefer-dark-theme'},
                                                    'gtk4-settings': {'Settings/gtk-theme-name', 'Settings/gtk-application-prefer-dark-theme'},
                                                    'qt5ct-settings': {'Appearance/custom_palette', 'Appearance/color_scheme_path'},

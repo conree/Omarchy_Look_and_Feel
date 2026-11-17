@@ -823,6 +823,7 @@ def apply_global_fonts(system_font_id: str, system_size: int, terminal_font_id: 
         'qt5ct-settings': {'Fonts/general', 'Fonts/fixed'},
         'qt6ct-settings': {'Fonts/general', 'Fonts/fixed'},
         'typora-base-user-css': {'fonts'},
+        'mailcraft-appearance': {'interfaceFont'},
     }
     from terminal_preferences import FONT_FIELDS
     ownership.update(FONT_FIELDS)

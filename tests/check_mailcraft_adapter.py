@@ -89,8 +89,26 @@ with patch.object(flea_opacity.shutil, 'which', return_value='/usr/bin/flea'), p
         assert json.loads(mailcraft_file.read_bytes())['opacity'] == 30
         # A theme (or font) Apply rewrites MailCraft's file; Flea's Undo still works and the
         # next Apply is not blocked.
-        tx.apply_file_targets({mc.TARGET: mc.appearance(dict(full, background='#000000'), 'Montserrat', None, 30)}, label='Theme test')
+        theme = lambda bg: tx.apply_file_targets({mc.TARGET: mc.appearance(dict(full, background=bg), 'Montserrat', None, 30)},
+                                                 label='Theme test', owned_fields={mc.TARGET: {'mode', 'colors'}})
+        font = lambda family: tx.apply_file_targets({mc.TARGET: mc.appearance(full, family, None, 30)},
+                                                    label='Font test', owned_fields={mc.TARGET: {'interfaceFont'}})
+        look = lambda: json.loads(mailcraft_file.read_bytes())
+        # App opacity, then a theme, then App opacity's Undo: the theme stays, the opacity goes back.
+        theme('#000000')
         flea_opacity.undo()
-        assert json.loads(mailcraft_file.read_bytes())['opacity'] == 40
-        tx.apply_file_targets({mc.TARGET: mc.appearance(full, 'Montserrat', None, 40)}, label='Theme test')
+        assert (look()['opacity'], look()['colors']['background']) == (40, '#000000'), look()
+        # A theme, then App opacity, then the theme's Undo: the opacity stays, the colours go back.
+        theme('#111111')
+        flea_opacity.apply(20)
+        tx.rollback_latest(label='Theme test')
+        assert (look()['opacity'], look()['colors']['background']) == (20, '#000000'), look()
+        # A font after a theme, then the theme's Undo: the font stays.
+        theme('#222222')
+        font('Fira Sans')
+        tx.rollback_latest(label='Theme test')
+        assert (look()['interfaceFont'], look()['colors']['background']) == ({'family': 'Fira Sans'}, '#000000'), look()
+        # And nothing is left jammed: every kind of Apply still goes through.
+        theme('#333333'); font('Montserrat'); flea_opacity.apply(50)
+        assert (look()['opacity'], look()['interfaceFont']['family'], look()['colors']['background']) == (50, 'Montserrat', '#333333'), look()
 print('mailcraft adapter: ok')

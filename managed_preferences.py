@@ -29,6 +29,9 @@ FIELDS = {
     'typora-profile': {'theme', 'darkTheme', 'useSeparateDarkTheme'},
     'appearance-policy': {'fonts', 'theme', 'background', 'icons', 'opacity', 'blur', 'fleaOpacity'},
     'terminal-blur-config': {'blur'},
+    # MailCraft's appearance file: the theme owns its look, fonts the interface font, App opacity
+    # the opacity, so an Undo of one never trips over another's later change.
+    'mailcraft-appearance': {'mode', 'colors', 'interfaceFont', 'opacity'},
 }
 INI_FIELDS = {
     'wezterm-config': {'fonts', 'theme'},
@@ -127,6 +130,11 @@ def decode(target, raw):
         return {'body': (text[:a] + text[b:]).rstrip(), 'fonts': text[a:b]}
     if target in INI_FIELDS:
         return _ini_decode(target, raw)
+    if target == 'mailcraft-appearance':
+        data = json.loads(raw, object_pairs_hook=_unique)
+        if not isinstance(data, dict):
+            raise ValueError('MailCraft appearance file must be an object')
+        return data
     if target == 'typora-profile':
         raw = bytes.fromhex(raw.decode('ascii'))
     data = json.loads(raw, object_pairs_hook=_unique)
