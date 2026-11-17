@@ -51,4 +51,46 @@ selection.write_text(json.dumps({'systemFontFamily': 'Montserrat', 'systemFontSi
 assert mc.saved_font() == ('Montserrat', 11)
 selection.write_text('not json')
 assert mc.saved_font() == (None, None)
+# The opacity for apps without their own setting: written when it is a percent, else left out.
+assert json.loads(mc.appearance(full, 'Montserrat', 11, 60))['opacity'] == 60
+for bad in [None, -1, 101, 60.5, True, '60']:
+    assert 'opacity' not in json.loads(mc.appearance(full, 'Montserrat', 11, bad)), bad
+assert mc.saved_opacity() is None
+policy_path = Path.home() / tx.FILE_TARGETS['appearance-policy']
+policy_path.parent.mkdir(parents=True, exist_ok=True)
+import appearance_policy
+policy_path.write_bytes(appearance_policy.update('fleaOpacity', 60))
+assert mc.saved_opacity() == 60
+policy_path.write_text('not json')
+assert mc.saved_opacity() is None
+# MailCraft's folder decides whether a Flea opacity Apply writes its file too.
+assert not mc.present()
+(Path.home() / '.config' / 'mailcraft').mkdir(parents=True)
+assert mc.present()
+
+# A Flea opacity change reaches MailCraft's file in a transaction of its own, so a theme Apply
+# in between never jams Flea's Undo (or any later Apply); with no readable theme, or a broken
+# one, Flea's change goes ahead and MailCraft's file is left alone.
+from unittest.mock import patch
+import flea_opacity
+policy_path.unlink()
+shell = Path.home() / tx.FILE_TARGETS[flea_opacity.TARGET]
+shell.parent.mkdir(parents=True, exist_ok=True)
+shell.write_bytes(b'[flea]\nbackground-alpha = 0.7\n')
+mailcraft_file = Path.home() / tx.FILE_TARGETS[mc.TARGET]
+with patch.object(flea_opacity.shutil, 'which', return_value='/usr/bin/flea'), patch.object(flea_opacity, 'pending', return_value=[]):
+    assert mc.TARGET not in flea_opacity.build(40)
+    for broken in [OSError('gone'), TypeError('mode=[1]')]:
+        with patch.object(mc, 'current_colors', side_effect=broken):
+            flea_opacity.apply(40)
+        assert not mailcraft_file.exists(), broken
+    with patch.object(mc, 'current_colors', return_value=full):
+        flea_opacity.apply(30)
+        assert json.loads(mailcraft_file.read_bytes())['opacity'] == 30
+        # A theme (or font) Apply rewrites MailCraft's file; Flea's Undo still works and the
+        # next Apply is not blocked.
+        tx.apply_file_targets({mc.TARGET: mc.appearance(dict(full, background='#000000'), 'Montserrat', None, 30)}, label='Theme test')
+        flea_opacity.undo()
+        assert json.loads(mailcraft_file.read_bytes())['opacity'] == 40
+        tx.apply_file_targets({mc.TARGET: mc.appearance(full, 'Montserrat', None, 40)}, label='Theme test')
 print('mailcraft adapter: ok')

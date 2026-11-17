@@ -301,7 +301,7 @@ def build(light, dark, selected, mode, desktop_ids, *, automatic=False):
     import mailcraft_adapter
     if mailcraft_adapter.installed(desktop_ids):
         family, size = mailcraft_adapter.saved_font()
-        plan.targets[mailcraft_adapter.TARGET] = mailcraft_adapter.appearance(active, family, size)
+        plan.targets[mailcraft_adapter.TARGET] = mailcraft_adapter.appearance(active, family, size, mailcraft_adapter.saved_opacity())
         plan.surfaces.append('MailCraft colours and fonts (Follow appearance file)')
     if any('brave' in item.casefold() for item in desktop_ids):
         raw = read('brave-flags')

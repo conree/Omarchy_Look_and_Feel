@@ -206,7 +206,7 @@ def build_app_targets(system_family, system_size, terminal_family, terminal_size
     if mailcraft_adapter.installed(desktop_ids):
         try:
             colors = mailcraft_adapter.current_colors()
-            targets[mailcraft_adapter.TARGET] = mailcraft_adapter.appearance(colors, system_family, system_size)
+            targets[mailcraft_adapter.TARGET] = mailcraft_adapter.appearance(colors, system_family, system_size, mailcraft_adapter.saved_opacity())
         except (OSError, ValueError, KeyError) as exc:
             pending.append({'app': 'MailCraft', 'action': 'theme-unreadable', 'reason': f'The current theme palette could not be read: {exc}'})
     if 'eu.betterbird.Betterbird.desktop' in desktop_ids:

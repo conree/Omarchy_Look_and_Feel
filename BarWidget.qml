@@ -240,7 +240,7 @@ BarWidget {
         panel.updatePending("fleaOpacity", fleaOpacity)
         panel.fleaOpacityActionNeedsAttention = fleaOpacity.pendingApplications.length > 0
         if (!panel.fleaOpacityActionNeedsAttention && (panel.sectionResults.fleaOpacity || {}).state === "pending")
-          panel.setSectionResult("fleaOpacity", "saved", "No Flea opacity changes are pending.")
+          panel.setSectionResult("fleaOpacity", "saved", "No App opacity changes are pending.")
       }
       root.reconciliationMessage = result.pendingApplications.map(function(item) { return item.app + ": " + item.reason }).join("\n")
     } catch (e) { root.reconciliationFailed = true; root.reconciliationMessage = "The appearance check returned an unreadable result." }

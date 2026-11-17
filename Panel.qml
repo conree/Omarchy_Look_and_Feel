@@ -406,7 +406,7 @@ Panel {
     if (step === "fonts") return "Fonts"
     if (step === "theme") return "Theme"
     if (step === "opacity") return "Terminal opacity"
-    if (step === "fleaOpacity") return "Flea opacity"
+    if (step === "fleaOpacity") return "App opacity"
     if (step === "blur") return "Terminal blur"
     if (step === "background") return "Background"
     if (step === "icons") return "Icons"
@@ -1273,14 +1273,14 @@ Panel {
                     Layout.fillWidth: true; spacing: 8
                     RowLayout {
                       Layout.fillWidth: true
-                      FieldLabel { text: "Flea opacity"; Layout.fillWidth: true }
-                      ActionButton { objectName: "undoFleaOpacityButton"; text: "Undo"; Accessible.name: "Undo Flea opacity"; quiet: true; visible: !!(root.appearanceActionStatuses.fleaOpacity || {}).undoAvailable; onClicked: root.undoAppearanceAction("fleaOpacity") }
+                      FieldLabel { text: "App opacity"; Layout.fillWidth: true }
+                      ActionButton { objectName: "undoFleaOpacityButton"; text: "Undo"; Accessible.name: "Undo App opacity"; quiet: true; visible: !!(root.appearanceActionStatuses.fleaOpacity || {}).undoAvailable; onClicked: root.undoAppearanceAction("fleaOpacity") }
                     }
                     Picker {
                       id: fleaOpacityPicker
                       objectName: "fleaOpacityPicker"
                       Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: 240
-                      accessibleLabel: "Flea opacity"
+                      accessibleLabel: "App opacity"
                       model: root.opacityChoices
                       currentIndex: root.opacityChoices.findIndex(function(entry) { return entry.id === root.selectedFleaOpacity })
                       onActivated: function(index) { root.selectedFleaOpacity = root.opacityChoices[index].id }
@@ -1290,7 +1290,7 @@ Panel {
                 Caption {
                   Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth
                   color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2
-                  text: "Flea background only; text and icons stay opaque. A window opened at 100% may need reopening to enable transparency."
+                  text: "For apps without an opacity setting of their own: Flea, and MailCraft while its theme follows the appearance file. Backgrounds only; text and icons stay opaque. A window opened before transparency was set may need reopening."
                 }
                 ResultNotice { Layout.fillWidth: true; kind: "fleaOpacity" }
               }
@@ -1646,7 +1646,7 @@ Panel {
             root.observedTheme = String(result.readback || result.restored || "")
             root.lastAppliedThemeSetThisSession = true
           }
-          message = "Restored the previous " + (kind === "fleaOpacity" ? "Flea opacity" : kind) + " setting."
+          message = "Restored the previous " + (kind === "fleaOpacity" ? "App opacity" : kind) + " setting."
           if (kind === "theme") {
             var restoredTheme = String(result.restored || "").toLowerCase().replace(/_/g, "-")
             var restoredThemeEntry = root.themes.find(function(entry) { return String(entry.name).toLowerCase().replace(/_/g, "-") === restoredTheme })

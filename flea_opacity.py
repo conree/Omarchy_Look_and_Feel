@@ -35,6 +35,28 @@ def build(percent):
     return {TARGET: shell_preferences.encode(data)}
 
 
+MAILCRAFT_LABEL = 'MailCraft app opacity'
+
+
+def follow_in_mailcraft(percent):
+    """The same opacity serves apps with no setting of their own: MailCraft takes it from its
+    appearance file (while its theme follows that file). Written in a transaction of its own,
+    after Flea's, so that Flea's Apply and Undo never depend on MailCraft's file, and nothing
+    ever rolls this one back over a later theme or font Apply. MailCraft is optional: any
+    trouble here leaves Flea's change as it is."""
+    import mailcraft_adapter
+    try:
+        if percent is None or not mailcraft_adapter.present():
+            return
+        wanted = mailcraft_adapter.appearance(mailcraft_adapter.current_colors(), mailcraft_adapter.saved_font()[0], opacity=percent)
+        path = Path.home() / tx.FILE_TARGETS[mailcraft_adapter.TARGET]
+        if path.exists() and path.read_bytes() == wanted:
+            return
+        tx.apply_file_targets({mailcraft_adapter.TARGET: wanted}, label=MAILCRAFT_LABEL)
+    except Exception:  # noqa: BLE001 - an optional app never stops Flea's change
+        return
+
+
 def pending(percent, *, wait=False):
     """Read the real Flea surface; never close windows or reload file operations."""
     if percent is None:
@@ -79,6 +101,7 @@ def apply(percent, *, automatic=False):
         targets, label='Automatic Flea opacity reconciliation' if automatic else LABEL,
         parent_transaction=parent[1].name if parent else None,
         owned_fields={TARGET: {FIELD}, 'appearance-policy': {'fleaOpacity'}}) if targets else None
+    follow_in_mailcraft(percent)
     return {'kind': 'fleaOpacity', 'state': 'committed' if identity else 'already-current',
             'transaction': identity, 'after': f'{percent}%', 'readback': f'{percent}%',
             'opacityPercent': percent, 'pendingApplications': pending(percent, wait=bool(identity)),
@@ -95,6 +118,7 @@ def undo():
     identity = tx.rollback_latest(label=LABEL)
     restored = tomllib.loads(read().decode()).get('flea', {}).get('background-alpha')
     percent = round(restored * 100) if restored is not None else None
+    follow_in_mailcraft(percent)
     result = status()
     return {'kind': 'fleaOpacity', 'rolledBack': identity, **result,
             'pendingApplications': pending(percent, wait=True), 'renderedAppearanceVerified': False}

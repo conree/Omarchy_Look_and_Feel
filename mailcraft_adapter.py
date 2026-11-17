@@ -44,10 +44,16 @@ def _family(name):
     return name
 
 
-def appearance(colors: dict, family: str | None, size_pt: int | None = None) -> bytes:
+def _percent(value):
+    return value if type(value) is int and 0 <= value <= 100 else None
+
+
+def appearance(colors: dict, family: str | None, size_pt: int | None = None, opacity: int | None = None) -> bytes:
     """The appearance file for an Omarchy palette (`application_themes.palette`)
     and the system font. `size_pt` is accepted for the callers and not written:
-    MailCraft's interface size is its own setting."""
+    MailCraft's interface size is its own setting. `opacity` is the percent the
+    plugin keeps for apps without an opacity setting of their own (`fleaOpacity`);
+    absent, MailCraft stays solid."""
     out = {'mode': colors['mode'], 'colors': {}}
     for key, sources in _COLORS:
         value = next((colors[s] for s in sources if isinstance(colors.get(s), str)), None)
@@ -59,6 +65,9 @@ def appearance(colors: dict, family: str | None, size_pt: int | None = None) -> 
     family = _family(family)
     if family:
         out['interfaceFont'] = {'family': family}
+    opacity = _percent(opacity)
+    if opacity is not None:
+        out['opacity'] = opacity
     return (json.dumps(out, indent=2, sort_keys=True) + '\n').encode()
 
 
@@ -74,6 +83,22 @@ def saved_font():
         return None, None
     size = data.get('systemFontSizePt')
     return _family(data.get('systemFontFamily')), size if isinstance(size, int) else None
+
+
+def saved_opacity():
+    """The opacity for apps without a setting of their own (`fleaOpacity` in the
+    plugin's policy), or None when none was applied."""
+    import appearance_policy
+    try:
+        return _percent(appearance_policy.read().get('fleaOpacity'))
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def present() -> bool:
+    """Whether MailCraft has a settings folder here (it has been run)."""
+    from transaction import FILE_TARGETS
+    return (Path.home() / FILE_TARGETS[TARGET]).parent.is_dir()
 
 
 def current_colors():
