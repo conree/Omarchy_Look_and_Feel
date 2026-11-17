@@ -68,7 +68,10 @@ def appearance(colors: dict, family: str | None, size_pt: int | None = None, opa
     opacity = _percent(opacity)
     if opacity is not None:
         out['opacity'] = opacity
-    return (json.dumps(out, indent=2, sort_keys=True) + '\n').encode()
+    # Byte for byte what the transaction layer writes when it merges this file by field, so a
+    # file already as wanted is seen to be so and no empty change is recorded.
+    from managed_preferences import encode
+    return encode(TARGET, out)
 
 
 def saved_font():

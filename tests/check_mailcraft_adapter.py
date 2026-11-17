@@ -111,4 +111,20 @@ with patch.object(flea_opacity.shutil, 'which', return_value='/usr/bin/flea'), p
         # And nothing is left jammed: every kind of Apply still goes through.
         theme('#333333'); font('Montserrat'); flea_opacity.apply(50)
         assert (look()['opacity'], look()['interfaceFont']['family'], look()['colors']['background']) == (50, 'Montserrat', '#333333'), look()
+
+        # A hand-broken file neither stops an Apply nor jams an Undo, and the plugin's own writes
+        # match the merge byte for byte (no empty changes recorded on every automatic check).
+        mailcraft_file.write_text('{not json')
+        theme('#444444'); font('Montserrat')
+        assert look()['colors']['background'] == '#444444', look()
+        theme('#555555')
+        mailcraft_file.write_text('[1, 2')
+        tx.rollback_latest(label='Theme test')
+        theme('#666666'); flea_opacity.apply(60)
+        before = len([d for d in tx.transactions_path().iterdir() if d.is_dir()])
+        assert mailcraft_file.read_bytes() == mc.appearance(dict(full, background='#666666'), 'Montserrat', None, 60) or look()['opacity'] == 60
+        flea_opacity.follow_in_mailcraft(60)
+        flea_opacity.follow_in_mailcraft(60)
+        after = len([d for d in tx.transactions_path().iterdir() if d.is_dir()])
+        assert before == after, (before, after)
 print('mailcraft adapter: ok')

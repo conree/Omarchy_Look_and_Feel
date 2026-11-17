@@ -131,10 +131,14 @@ def decode(target, raw):
     if target in INI_FIELDS:
         return _ini_decode(target, raw)
     if target == 'mailcraft-appearance':
-        data = json.loads(raw, object_pairs_hook=_unique)
-        if not isinstance(data, dict):
-            raise ValueError('MailCraft appearance file must be an object')
-        return data
+        # An optional app's own file that anyone may edit: one that can't be read counts as
+        # empty, so it never stops an Apply or an Undo for every other app (MailCraft says in
+        # its Options what is wrong with a file it can't use).
+        try:
+            data = json.loads(raw, object_pairs_hook=_unique)
+        except ValueError:
+            return {}
+        return data if isinstance(data, dict) else {}
     if target == 'typora-profile':
         raw = bytes.fromhex(raw.decode('ascii'))
     data = json.loads(raw, object_pairs_hook=_unique)
@@ -244,9 +248,16 @@ def validate_edits(target, changes):
 def restore(target, current, changes):
     validate_edits(target, changes)
     data = decode(target, current)
-    for key, row in changes.items():
+    changes = dict(changes)
+    for key, row in list(changes.items()):
         actual = [data[key]] if key in data else []
         if actual != row['before'] and actual != row['after']:
+            # MailCraft's file is an optional app's own: a part changed since (by hand, or a broken
+            # file read as empty) is kept as it is and the rest put back, rather than holding every
+            # later Apply until the file is repaired by hand.
+            if target == 'mailcraft-appearance':
+                changes.pop(key)
+                continue
             raise ValueError(f'{target}: {key} changed independently; preserving it')
     result = copy.deepcopy(data)
     for key, row in changes.items():

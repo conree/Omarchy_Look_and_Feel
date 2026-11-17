@@ -48,10 +48,13 @@ def follow_in_mailcraft(percent):
     try:
         if percent is None or not mailcraft_adapter.present():
             return
-        wanted = mailcraft_adapter.appearance(mailcraft_adapter.current_colors(), mailcraft_adapter.saved_font()[0], opacity=percent)
         path = Path.home() / tx.FILE_TARGETS[mailcraft_adapter.TARGET]
-        if path.exists() and path.read_bytes() == wanted:
-            return
+        if path.exists():
+            # Only the opacity is this change's: the rest of the file is the theme's and the fonts'.
+            from managed_preferences import decode
+            if decode(mailcraft_adapter.TARGET, path.read_bytes()).get('opacity') == percent:
+                return
+        wanted = mailcraft_adapter.appearance(mailcraft_adapter.current_colors(), mailcraft_adapter.saved_font()[0], opacity=percent)
         tx.apply_file_targets({mailcraft_adapter.TARGET: wanted}, label=MAILCRAFT_LABEL,
                               owned_fields={mailcraft_adapter.TARGET: {'opacity'}})
     except Exception:  # noqa: BLE001 - an optional app never stops Flea's change
