@@ -27,7 +27,8 @@ assert out['colors'] == {'background': '#17191b', 'raised': '#2e3236', 'text': '
                          'accent': '#b3a6bc', 'selection': '#2e3236', 'red': '#ff7d6c', 'green': '#9baf84',
                          'yellow': '#f2c861', 'orange': '#c9a273', 'blue': '#8ca3b5', 'purple': '#c28fa3'}, out['colors']
 assert out['interfaceFont'] == {'family': 'Montserrat'}
-assert out['composeFont'] == {'family': 'Montserrat', 'sizePt': 11}
+# The font outgoing mail is written in is MailCraft's own setting, never sent from here.
+assert 'composeFont' not in out
 
 # A minimal palette takes its stand-ins.
 small = dict(mode='light', background='#fafafa', foreground='#101020', accent='#334455')
@@ -38,8 +39,7 @@ assert 'red' not in out['colors'] and 'interfaceFont' not in out and 'composeFon
 # A family MailCraft would refuse is left out rather than written.
 for bad in ['', ' ', 'A;B', 'A"B', "A'B", 'A,B', 'x' * 65, 'A\nB', 7, None]:
     assert 'interfaceFont' not in json.loads(mc.appearance(full, bad, 11)), bad
-# An out-of-range size keeps the interface font and drops the composition one.
-for size in [5, 49, True, '11', None]:
+for size in [5, 49, True, '11', None, 11]:
     out = json.loads(mc.appearance(full, 'Montserrat', size))
     assert out['interfaceFont'] == {'family': 'Montserrat'} and 'composeFont' not in out, size
 

@@ -46,17 +46,19 @@ def _family(name):
 
 def appearance(colors: dict, family: str | None, size_pt: int | None = None) -> bytes:
     """The appearance file for an Omarchy palette (`application_themes.palette`)
-    and the system font. `size_pt` is the composition font's size."""
+    and the system font. `size_pt` is accepted for the callers and not written:
+    MailCraft's interface size is its own setting."""
     out = {'mode': colors['mode'], 'colors': {}}
     for key, sources in _COLORS:
         value = next((colors[s] for s in sources if isinstance(colors.get(s), str)), None)
         if value:
             out['colors'][key] = value.lower()
+    # The system font drives MailCraft's own text: menus, lists and the mail you read. The font
+    # outgoing mail is written in is MailCraft's own setting (File > Options > Compose > Message
+    # body) and is never sent from here.
     family = _family(family)
     if family:
         out['interfaceFont'] = {'family': family}
-        if isinstance(size_pt, int) and not isinstance(size_pt, bool) and 6 <= size_pt <= 48:
-            out['composeFont'] = {'family': family, 'sizePt': size_pt}
     return (json.dumps(out, indent=2, sort_keys=True) + '\n').encode()
 
 
