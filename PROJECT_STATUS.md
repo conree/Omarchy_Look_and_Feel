@@ -1,6 +1,19 @@
 # Project status
 
-## Current: marketplace security fix — November 14
+## Current: v0.3.7 — November 20
+
+Adds the plugin's themed screensaver (Appearance > Screensaver) and releases the
+MailCraft appearance-file adapter and the November 14 Marketplace security fix,
+which were on main after v0.3.6. The owner confirmed the screensaver starts live
+after the idle time. A first 15-minute idle test did not start it because
+Omarchy's Stay Awake indicator was on (since 05:33); the launcher's idle path
+was traced live to that check, and the owner then confirmed it working with Stay
+Awake off. The owner authorized a handoff, commit, push, and Marketplace
+revision. See [release notes](RELEASE_NOTES_0.3.7.md) and
+[validation](RELEASE_VALIDATION.md). Unrelated working-tree documents remain
+excluded.
+
+## Previous: marketplace security fix — November 14
 
 The follow-up to Marketplace issue #14718 removes the clipboard-connected
 Applications editor, defers panel creation until explicitly opened, and bounds

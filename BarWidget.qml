@@ -1,6 +1,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Wayland
 import qs.Commons
 import qs.Ui
 import "." as Local
@@ -76,6 +77,74 @@ BarWidget {
       root.savedShellFont = saved.schemaVersion === 1 && typeof saved.systemFontFamily === "string" ? saved.systemFontFamily : ""
       root.shellFontOwned = desired.schemaVersion === 1 && !!desired.fonts
     } catch (e) { root.shellFontOwned = false }
+  }
+
+  // Themed screensaver: the plugin's own idle timer starts screensaver/launch.
+  property bool screensaverEnabled: false
+  property int screensaverIdleSeconds: 600
+  property string screensaverEffect: "matrix"
+  property bool screensaverLoaded: false
+  property string screensaverError: ""
+  readonly property string screensaverLauncher: decodeURIComponent(String(Qt.resolvedUrl("screensaver/launch")).replace(/^file:\/\//, ""))
+
+  function setScreensaver(enabled, idleSeconds, effect) {
+    if (screensaverSettingProcess.running) return
+    root.screensaverError = ""
+    screensaverSettingProcess.command = ["/usr/bin/python3", "-B", decodeURIComponent(String(Qt.resolvedUrl("controller.py")).replace(/^file:\/\//, "")), "set-screensaver", enabled ? "on" : "off", String(idleSeconds), String(effect)]
+    screensaverSettingProcess.running = true
+  }
+
+  // The panel is a keyboard-exclusive layer: while it is open the screensaver
+  // windows cannot take focus or go fullscreen. Close it, then launch.
+  property string pendingPreviewEffect: ""
+  function previewScreensaver(effect) {
+    root.pendingPreviewEffect = String(effect || "")
+    root.close()
+    previewDelay.restart()
+  }
+  Timer {
+    id: previewDelay
+    interval: 500
+    onTriggered: Quickshell.execDetached(["/bin/bash", root.screensaverLauncher, "preview", root.pendingPreviewEffect])
+  }
+
+  FileView {
+    id: screensaverSetting
+    path: root.appearanceConfigDir + "screensaver.json"
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: {
+      try {
+        var value = JSON.parse(text())
+        if (typeof value.enabled !== "boolean" || typeof value.idleSeconds !== "number" || value.idleSeconds < 60 || typeof value.effect !== "string")
+          throw new Error("Invalid setting")
+        root.screensaverEnabled = value.enabled
+        root.screensaverIdleSeconds = value.idleSeconds
+        root.screensaverEffect = value.effect
+        root.screensaverError = ""
+      } catch (e) { root.screensaverEnabled = false; root.screensaverError = "Could not read the screensaver setting." }
+      root.screensaverLoaded = true
+    }
+    onLoadFailed: { root.screensaverEnabled = false; root.screensaverLoaded = true }
+  }
+  BoundedProcess {
+    id: screensaverSettingProcess
+    onCompleted: {
+      if (resultExitCode !== 0) root.screensaverError = "Could not save the screensaver setting."
+      else screensaverSetting.reload()
+    }
+  }
+  // IdleMonitor ignores timeout changes after creation, so Variants creates a
+  // new monitor whenever the idle time changes (or the screensaver is turned on).
+  Variants {
+    model: root.screensaverLoaded && root.screensaverEnabled ? [Math.max(60, root.screensaverIdleSeconds)] : []
+    IdleMonitor {
+      required property var modelData
+      timeout: modelData
+      respectInhibitors: true
+      onIsIdleChanged: if (isIdle) Quickshell.execDetached(["/bin/bash", root.screensaverLauncher, "idle"])
+    }
   }
 
   FileView {

@@ -1,4 +1,31 @@
-# Release validation — updated 2026-11-11
+# Release validation — updated 2026-11-20
+
+## Themed screensaver, MailCraft, security fixes — November 20, v0.3.7
+
+Isolated suite on the release working tree: 41 of 44 test programs pass,
+including `check_screensaver.py`, `check_mailcraft_adapter.py`,
+`check_process_limits.py` and `check_panel_keyboard.py`. Not passing:
+
+- `check_wayland_clipboard.py` is a live-session harness that needs
+  `--runtime-dir`; it is not a standalone test. It was run for the
+  14 November security fix (see that handoff) and was not rerun here.
+- `check_icon_panel.js` fails at v0.3.6 too, so it predates this release.
+- `check_appearance_result.js` passes at v0.3.6 and fails from `c951632` (the
+  14 November security fix, included in 0.3.7). Its fixture cuts
+  `finishAppearanceAction` up to `\n  Process {`, and that commit replaced
+  `Process` with `BoundedProcess {`. This is harness drift, not an observed
+  behaviour defect. But it means the appearance-action completion-order
+  checks have not run since that commit rewrote the completion path. Not fixed
+  in 0.3.7.
+- An independent reviewer confirmed these results at v0.3.6, `c951632`,
+  `72196ee`, and the release working tree.
+
+Live acceptance: the owner confirmed the screensaver starting after the idle
+time on the real desktop. An earlier 15-minute miss was traced to Omarchy's
+Stay Awake indicator, which was on. A `bash -x` trace of `screensaver/launch idle`
+exited at the documented Stay Awake check. Not live-tested in this session:
+every effect, Preview, the wake-to-lock path, and MailCraft's live window.
+
 
 ## Font sizing and application ownership — November 11, v0.3.6
 

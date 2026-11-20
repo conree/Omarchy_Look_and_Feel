@@ -29,6 +29,10 @@ Panel {
   readonly property int controlFontPixelSize: Math.round(Style.font.body)
   // Match the start of the dark theme column; use the full width when stacked.
   readonly property real textColumnWidth: content.width < 620 ? content.width : (content.width + 20) / 2
+  // Appearance-tab explanations end at the right edge of the screensaver Effect
+  // selector (it sits in a row starting at the page's left edge).
+  readonly property real appearanceTextWidth: screensaverEffectPicker.width > 0
+    ? Math.min(content.width, screensaverEffectPicker.x + screensaverEffectPicker.width) : textColumnWidth
   property var fonts: []
   property bool onlyMonospacedTerminalFonts: false
   readonly property var terminalFonts: onlyMonospacedTerminalFonts
@@ -60,6 +64,55 @@ Panel {
   property int selectedOpacity: -1
   property int selectedFleaOpacity: -1
   property string selectedBlur: "keep"
+  // Mirrors screensaver.CHOICES and IDLE_CHOICES; the controller validates.
+  property var screensaverEffectChoices: [
+    { id: "matrix", name: "Matrix" },
+    { id: "random", name: "Random effect" },
+    { id: "beams", name: "Beams" },
+    { id: "binarypath", name: "Binary path" },
+    { id: "blackhole", name: "Black hole" },
+    { id: "bouncyballs", name: "Bouncy balls" },
+    { id: "bubbles", name: "Bubbles" },
+    { id: "burn", name: "Burn" },
+    { id: "colorshift", name: "Colour shift" },
+    { id: "crumble", name: "Crumble" },
+    { id: "decrypt", name: "Decrypt" },
+    { id: "errorcorrect", name: "Error correct" },
+    { id: "expand", name: "Expand" },
+    { id: "fireworks", name: "Fireworks" },
+    { id: "highlight", name: "Highlight" },
+    { id: "laseretch", name: "Laser etch" },
+    { id: "middleout", name: "Middle out" },
+    { id: "orbittingvolley", name: "Orbiting volley" },
+    { id: "overflow", name: "Overflow" },
+    { id: "pour", name: "Pour" },
+    { id: "print", name: "Print" },
+    { id: "rain", name: "Rain" },
+    { id: "randomsequence", name: "Random sequence" },
+    { id: "rings", name: "Rings" },
+    { id: "scattered", name: "Scattered" },
+    { id: "slice", name: "Slice" },
+    { id: "slide", name: "Slide" },
+    { id: "smoke", name: "Smoke" },
+    { id: "spotlights", name: "Spotlights" },
+    { id: "spray", name: "Spray" },
+    { id: "swarm", name: "Swarm" },
+    { id: "sweep", name: "Sweep" },
+    { id: "synthgrid", name: "Synth grid" },
+    { id: "thunderstorm", name: "Thunderstorm" },
+    { id: "unstable", name: "Unstable" },
+    { id: "vhstape", name: "VHS tape" },
+    { id: "waves", name: "Waves" },
+    { id: "wipe", name: "Wipe" }]
+  property var screensaverIdleChoices: [
+    { id: 60, name: "After 1 minute idle" },
+    { id: 120, name: "After 2 minutes idle" },
+    { id: 300, name: "After 5 minutes idle" },
+    { id: 600, name: "After 10 minutes idle" },
+    { id: 900, name: "After 15 minutes idle" },
+    { id: 1200, name: "After 20 minutes idle" },
+    { id: 1800, name: "After 30 minutes idle" },
+    { id: 3600, name: "After 1 hour idle" }]
   property var blurChoices: [{ id: "keep", name: "Keep current settings" },
     { id: "off", name: "Off" }, { id: "on", name: "On" }]
   property var opacityChoices: [{ id: -1, name: "Keep current settings" }].concat(
@@ -1158,7 +1211,7 @@ Panel {
               spacing: 6
               Text { text: "Look"; color: root.brandColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
               Text { text: "& Feel"; color: root.accentColor; font.family: root.fontFamily; font.pixelSize: root.controlFontPixelSize * 1.65; font.weight: Font.DemiBold }
-              Caption { text: "v0.3.6"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
+              Caption { text: "v0.3.7"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; Layout.alignment: Qt.AlignBottom; Layout.bottomMargin: 3 }
             }
             Caption { text: "Your desktop, in one place"; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
           }
@@ -1208,14 +1261,51 @@ Panel {
                 ThemeChoice { light: true; heading: "Light theme" }
                 ThemeChoice { light: false; heading: "Dark theme" }
               }
-              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Automatic follows local sunrise and sunset while automatic repair is on."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2; visible: root.selectedThemeMode === "automatic" }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.appearanceTextWidth; text: "Automatic follows local sunrise and sunset while automatic repair is on."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1; visible: root.selectedThemeMode === "automatic" }
               RowLayout {
                 Layout.fillWidth: true
                 FieldLabel { text: "Automatic repair"; Layout.fillWidth: true }
                 ActionButton { objectName: "repairToggle"; text: root.hostWidget && root.hostWidget.repairEnabled ? "On" : "Off"; selected: root.hostWidget && root.hostWidget.repairEnabled; enabled: !!root.hostWidget && root.hostWidget.repairSettingLoaded; Accessible.name: "Toggle automatic repair"; onClicked: root.hostWidget.setRepairEnabled(!root.hostWidget.repairEnabled) }
               }
-              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "On: repair managed settings and follow sunrise/sunset. Off: pause repair and day/night switching; the shell font binding stays active. Background status checks also pause."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2 }
-              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; visible: !!root.hostWidget && !!root.hostWidget.repairSettingError; text: root.hostWidget ? root.hostWidget.repairSettingError : ""; color: root.warningColor }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.appearanceTextWidth; text: "On: repair managed settings and follow sunrise/sunset. Off: pause repair and day/night switching; the shell font binding stays active. Background status checks also pause."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+              Caption { Layout.fillWidth: true; Layout.maximumWidth: root.appearanceTextWidth; visible: !!root.hostWidget && !!root.hostWidget.repairSettingError; text: root.hostWidget ? root.hostWidget.repairSettingError : ""; color: root.warningColor }
+              ColumnLayout {
+                id: screensaverControls
+                objectName: "screensaverControls"
+                Layout.fillWidth: true; spacing: 8
+                readonly property var host: root.hostWidget
+                readonly property bool ready: !!host && host.screensaverLoaded
+                RowLayout {
+                  Layout.fillWidth: true
+                  FieldLabel { text: "Screensaver"; Layout.fillWidth: true }
+                  ActionButton { objectName: "screensaverToggle"; text: screensaverControls.ready && screensaverControls.host.screensaverEnabled ? "On" : "Off"; selected: screensaverControls.ready && screensaverControls.host.screensaverEnabled; enabled: screensaverControls.ready; Accessible.name: "Toggle themed screensaver"; onClicked: screensaverControls.host.setScreensaver(!screensaverControls.host.screensaverEnabled, screensaverControls.host.screensaverIdleSeconds, screensaverControls.host.screensaverEffect) }
+                }
+                RowLayout {
+                  Layout.fillWidth: true; spacing: 12
+                  Picker {
+                    objectName: "screensaverIdlePicker"
+                    Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: 260
+                    accessibleLabel: "Screensaver starts after"
+                    enabled: screensaverControls.ready
+                    model: root.screensaverIdleChoices
+                    currentIndex: screensaverControls.ready ? root.screensaverIdleChoices.findIndex(function(entry) { return entry.id === screensaverControls.host.screensaverIdleSeconds }) : -1
+                    onActivated: function(index) { screensaverControls.host.setScreensaver(screensaverControls.host.screensaverEnabled, root.screensaverIdleChoices[index].id, screensaverControls.host.screensaverEffect) }
+                  }
+                  Picker {
+                    id: screensaverEffectPicker
+                    objectName: "screensaverEffectPicker"
+                    Layout.fillWidth: true; Layout.minimumWidth: 0; Layout.maximumWidth: 220
+                    accessibleLabel: "Screensaver effect"
+                    enabled: screensaverControls.ready
+                    model: root.screensaverEffectChoices
+                    currentIndex: screensaverControls.ready ? root.screensaverEffectChoices.findIndex(function(entry) { return entry.id === screensaverControls.host.screensaverEffect }) : -1
+                    onActivated: function(index) { screensaverControls.host.setScreensaver(screensaverControls.host.screensaverEnabled, screensaverControls.host.screensaverIdleSeconds, root.screensaverEffectChoices[index].id) }
+                  }
+                  ActionButton { objectName: "screensaverPreview"; text: "Preview"; quiet: true; enabled: screensaverControls.ready; Accessible.name: "Preview screensaver"; onClicked: screensaverControls.host.previewScreensaver(screensaverEffectPicker.currentValue || screensaverControls.host.screensaverEffect) }
+                }
+                Caption { Layout.fillWidth: true; Layout.maximumWidth: root.appearanceTextWidth; text: "Starts when you have been idle for the chosen time, in colours from the active theme. Waking it locks the screen; Preview just closes. On also turns off Omarchy's own screensaver; Off restores it if the plugin turned it off. Stay Awake pauses it. Omarchy's idle lock is separate: if it locks first, the screensaver does not start."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+                Caption { Layout.fillWidth: true; Layout.maximumWidth: root.appearanceTextWidth; visible: !!screensaverControls.host && !!screensaverControls.host.screensaverError; text: screensaverControls.host ? screensaverControls.host.screensaverError : ""; color: root.warningColor }
+              }
               ColumnLayout {
                 Layout.fillWidth: true; spacing: 8
                 GridLayout {
@@ -1260,9 +1350,9 @@ Panel {
                 }
                 Caption {
                   Layout.fillWidth: true
-                  Layout.maximumWidth: Math.min(root.textColumnWidth, terminalBlurColumn.x + terminalBlurPicker.width)
+                  Layout.maximumWidth: root.appearanceTextWidth
                   Layout.alignment: Qt.AlignLeft
-                  color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2
+                  color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1
                   text: "70% opacity means 30% transparency. Blur softens the background behind terminals. Coloured prompt backgrounds stay opaque."
                 }
                 ResultNotice { Layout.fillWidth: true; kind: "opacity" }
@@ -1288,8 +1378,8 @@ Panel {
                   }
                 }
                 Caption {
-                  Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth
-                  color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 2
+                  Layout.fillWidth: true; Layout.maximumWidth: root.appearanceTextWidth
+                  color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1
                   text: "For apps without an opacity setting of their own: Flea, and MailCraft while its theme follows the appearance file. Backgrounds only; text and icons stay opaque. A window opened before transparency was set may need reopening."
                 }
                 ResultNotice { Layout.fillWidth: true; kind: "fleaOpacity" }
@@ -1378,7 +1468,7 @@ Panel {
                   ActionButton { text: "Recover boot artwork"; quiet: true; visible: !!(root.appearanceActionStatuses.unlock || {}).recoveryAvailable; onClicked: root.runAppearanceAction("unlock", ["recover-unlock"]) }
                 }
                 ResultNotice { Layout.fillWidth: true; kind: "unlock" }
-                Caption { Layout.fillWidth: true; Layout.maximumWidth: root.textColumnWidth; text: "Applying or undoing boot artwork requires administrator approval."; color: root.mutedColor; font.pixelSize: root.controlFontPixelSize - 1 }
+                Caption { Layout.fillWidth: true; Layout.maximumWidth: root.appearanceTextWidth; text: "Applying or undoing boot artwork requires administrator approval."; color: root.mutedColor }
               }
             }
             ColumnLayout {

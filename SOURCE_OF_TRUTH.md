@@ -7,6 +7,13 @@ The owner's installed plugin at
 `/home/si/.config/omarchy/plugins/si.omarchy-look-and-feel` is a symlink to this
 repository. Other users receive their own plugin-manager checkout.
 
+The 0.3.7 release adds the plugin's themed screensaver (`screensaver.py`,
+`screensaver/launch`, `screensaver/render`), the MailCraft appearance-file
+adapter, and the Marketplace security-review fixes (deferred panel creation,
+no native clipboard-connected search field, bounded command lifecycles). See
+`RELEASE_NOTES_0.3.7.md` and `RELEASE_VALIDATION.md` for scope and evidence. The
+`v0.3.7` tag identifies the release revision once pushed.
+
 The 0.3.6 release scales shell type tokens pinned by the active theme, manages
 Betterbird's interface font size from the compositor scale, resolves Betterbird's
 active profile from `compatibility.ini`, and makes Flea follow Omarchy's text

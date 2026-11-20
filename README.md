@@ -6,19 +6,21 @@ Bring supported GTK, Qt and terminal apps together with shared themes and fonts.
 Choose light and dark themes, terminal opacity and blur, backgrounds and icons—all from one place.
 Changes are journalled, with separate **Undo** controls for each section.
 
-Version **0.3.6** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
+Version **0.3.7** · Development release · [Tested coverage](RELEASE_VALIDATION.md)
 
-## What's changed in 0.3.6
+## New in this Release (0.3.7)
 
-- Shell text now follows the selected point size even when a theme pins its own
-  `[font]` tokens, as Sakura Mochi does.
-- Betterbird's interface size is managed from the focused monitor scale, and its
-  active profile is resolved from the executable and compatibility metadata.
-- Flea's Display text size is reset to Follow Omarchy through a journaled target;
-  close Flea first if it is running.
-- Newer Omarchy theme scripts with the optional empty-token guard are supported.
+- **Themed screensaver**: Appearance has Screensaver controls (On/Off, idle
+  time, effect) that colour the screensaver from the active theme. See
+  [Screensaver](#screensaver).
+- **MailCraft** follows theme, interface font and App opacity through its
+  appearance file while its theme is *Follow appearance file*.
+- **Marketplace security review fixes**: the panel is created only when opened,
+  the Applications search no longer makes the shell subscribe to the clipboard
+  (paste is not available there), and every panel command whose output the
+  plugin collects is bounded by time and output.
 
-See [the 0.3.6 release notes](RELEASE_NOTES_0.3.6.md) for verification and scope.
+See [the 0.3.7 release notes](RELEASE_NOTES_0.3.7.md) for verification and scope.
 
 > **Automatic repair:** by default, after you apply a choice, the loaded plugin checks saved
 > themes, fonts, icons and terminal opacity on startup and every **15 seconds**, in all modes and
@@ -291,6 +293,34 @@ its own Undo and automatic repair, independent of terminal opacity and fonts.
 If Flea was opened with an explicit 100% setting, reopen it after lowering
 opacity; the plugin reports that requirement. Other windows normally update
 live. No administrator setup is needed for this control.
+
+### Screensaver
+
+The Appearance tab's **Screensaver** controls replace Omarchy's screensaver,
+whose colours are fixed, with one coloured from the active theme. They take
+effect immediately; they are not part of **APPLY CHANGES** or Undo.
+
+- **On/Off**. On also turns Omarchy's own screensaver off (its menu's
+  *Screensaver Off* setting), so the two never both start. Off turns
+  Omarchy's screensaver back on, but only if the plugin was the one that
+  turned it off; if you had already turned it off yourself, it stays off.
+- **Start after** (shown as "After N minutes idle"): 1 minute to 1 hour of idle time. The plugin's own idle timer
+  runs in the bar widget, so the widget must be on the bar. Idle inhibitors
+  (for example, a playing video) and Omarchy's **Stay Awake** indicator pause it.
+- **Effect**: Matrix, a random effect each cycle, or any single ttfx effect.
+  Colours come from the current theme each time an effect starts, so theme
+  changes are followed without an Apply.
+- Waking it with a key or mouse movement keeps it on screen until Omarchy's
+  password lock is secure, then locks. **Preview** closes the panel and shows
+  it without locking.
+- Omarchy's own idle lock (`idle.lock` in `~/.config/omarchy/shell.json`,
+  5 minutes by default) is separate. The screensaver does not start on a
+  locked screen, so choose a shorter **Start after** time or set `idle.lock`
+  to `0`; waking the screensaver locks anyway.
+
+It uses the text or picture from `omarchy branding screensaver`, runs in the
+same terminals as Omarchy's screensaver (Alacritty, Ghostty, foot or kitty),
+and is always opaque. Ghostty uses the Look & Feel terminal font and size.
 
 ### Generic font preferences
 

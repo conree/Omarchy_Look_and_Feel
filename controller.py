@@ -866,7 +866,7 @@ def write_action_result(result):
 
 
 def main(argv: list[str]) -> int:
-    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-opacity", "apply-flea-opacity", "apply-blur", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile", "set-repair"}
+    mutation = argv and argv[0] in {"apply-global-fonts", "rollback-global-fonts", "apply-theme", "apply-opacity", "apply-flea-opacity", "apply-blur", "apply-catalog-action", "rollback-appearance", "recover-unlock", "reconcile", "set-repair", "set-screensaver"}
     if not mutation:
         return _main(argv)
     import appearance_policy
@@ -875,7 +875,7 @@ def main(argv: list[str]) -> int:
             from managed_preferences import AUTOMATIC
             token = AUTOMATIC.set(argv == ["reconcile"])
             try:
-                if argv[0] == 'set-repair' or (argv == ['reconcile'] and not appearance_policy.repair_enabled()):
+                if argv[0] in ('set-repair', 'set-screensaver') or (argv == ['reconcile'] and not appearance_policy.repair_enabled()):
                     return _main(argv)
                 import requirements
                 if argv[0] == "apply-global-fonts":
@@ -916,6 +916,15 @@ def main(argv: list[str]) -> int:
 
 
 def _main(argv: list[str]) -> int:
+    if argv == ['screensaver-status']:
+        import screensaver
+        print(json.dumps(screensaver.status()))
+        return 0
+    if len(argv) == 4 and argv[0] == 'set-screensaver' and argv[1] in ('on', 'off') and argv[2].isdigit():
+        import screensaver
+        screensaver.save(argv[1] == 'on', int(argv[2]), argv[3])
+        print(json.dumps(screensaver.status()))
+        return 0
     if len(argv) == 2 and argv[0] == 'set-repair' and argv[1] in ('on', 'off'):
         import appearance_policy
         appearance_policy.set_repair_enabled(argv[1] == 'on')

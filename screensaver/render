@@ -1,0 +1,112 @@
+#!/bin/bash
+# Look & Feel themed screensaver renderer, run inside each screensaver terminal.
+# Adapted from Omarchy's omarchy-screensaver. Each effect's colours come from
+# the active theme every time an effect starts.
+#
+# Usage: render idle|preview [effect]
+#   idle:    wake keeps the screensaver up until Omarchy's lock is secure.
+#   preview: wake just closes the screensaver.
+
+mode=${1:-idle}
+effect=${2:-}
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+plugin=$(dirname "$here")
+
+screensaver_in_focus() {
+  hyprctl activewindow -j | jq -e '.class == "org.omarchy.screensaver"' >/dev/null 2>&1
+}
+
+close_screensaver() {
+  hyprctl eval 'hl.config({ cursor = { invisible = false } })' &>/dev/null || hyprctl keyword cursor:invisible false &>/dev/null || true
+  pkill -x ttfx 2>/dev/null
+  pkill -f '[o]rg.omarchy.screensaver' 2>/dev/null
+  exit 0
+}
+
+lock_is_secure() {
+  omarchy-shell lock status 2>/dev/null | jq -e '.secure == true' >/dev/null
+}
+
+# Shared by every monitor's renderer; opened once so a nested wake signal
+# cannot replace the open file and drop the lock early.
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-look-and-feel-screensaver-wake.lock"
+
+exit_screensaver() {
+  [[ $mode == idle ]] || close_screensaver
+  # Keep the fullscreen terminals up until the standard lock is secure.
+  # One monitor requests the lock; the others wait for the same lock surface.
+  flock 9 || return 1
+  if ! lock_is_secure; then
+    omarchy-shell lock lock >/dev/null 2>&1
+    local deadline=$((SECONDS + 8))
+    until lock_is_secure; do
+      if ((SECONDS >= deadline)); then
+        if [[ -t 0 ]]; then
+          # Still on screen: stay up; the next wake tries again.
+          flock -u 9
+          return 1
+        fi
+        # The terminal is gone (closed, logout), so nothing would retry.
+        # Fall back to Omarchy's full lock command and keep trying briefly.
+        omarchy-system-lock >/dev/null 2>&1
+        deadline=$((SECONDS + 30))
+        until lock_is_secure || ((SECONDS >= deadline)); do sleep 0.5; done
+        break
+      fi
+      sleep 0.1
+    done
+  fi
+  # The regular system command also locks 1Password and cleans up the saver.
+  trap '' SIGINT SIGTERM SIGHUP SIGQUIT
+  omarchy-system-lock >/dev/null 2>&1
+  close_screensaver
+}
+
+# Exit the screensaver on signals and input from keyboard and mouse
+trap exit_screensaver SIGINT SIGTERM SIGHUP SIGQUIT
+
+printf '\033]11;rgb:00/00/00\007' # Set background color to black
+stty -echo 2>/dev/null             # Don't echo the key that stops the screensaver into the corner
+
+hyprctl eval 'hl.config({ cursor = { invisible = true } })' &>/dev/null || hyprctl keyword cursor:invisible true &>/dev/null
+
+tty=$(tty 2>/dev/null)
+
+# ttfx measures the terminal once, at startup; wait for the fullscreen resize.
+wait_for_terminal_resize() {
+  local deadline=$((SECONDS + 2))
+  while ((SECONDS < deadline)) && [[ $(stty size 2>/dev/null) == "24 80" ]]; do
+    sleep 0.02
+  done
+}
+
+wait_for_terminal_resize
+# Let the launcher finish placing every monitor's fullscreen terminal; it moves
+# focus (and may warp the cursor) between monitors while doing so.
+placing="${XDG_RUNTIME_DIR:-/tmp}/omarchy-look-and-feel-screensaver.placing"
+placing_deadline=$((SECONDS + 15))
+while [[ -e $placing ]] && ((SECONDS < placing_deadline)); do
+  sleep 0.1
+done
+sleep 0.5
+initial_cursor=$(hyprctl cursorpos -j | jq -c '[.x, .y]')
+
+while true; do
+  # Fall back to Omarchy's stock colours rather than a blank screen.
+  # Without a terminal there is nothing to draw on or wake from.
+  [[ -t 0 ]] || exit_screensaver
+  mapfile -d '' -t effect_args < <(python3 -B "$plugin/screensaver.py" args ${effect:+"$effect"} 2>/dev/null)
+  ((${#effect_args[@]})) || effect_args=(matrix)
+
+  ttfx -i ~/.config/omarchy/branding/screensaver.txt \
+    --frame-rate 120 --canvas-width 0 --canvas-height 0 --reuse-canvas --anchor-canvas c --anchor-text c \
+    --no-eol --no-restore-cursor "${effect_args[@]}" &
+
+  while pgrep -t "${tty#/dev/}" -x ttfx >/dev/null; do
+    if read -n1 -t 1 || ! screensaver_in_focus ||
+      [[ $(hyprctl cursorpos -j | jq -c '[.x, .y]') != "$initial_cursor" ]]; then
+      exit_screensaver
+    fi
+  done
+  sleep 0.2 # never spin if ttfx exits at once
+done

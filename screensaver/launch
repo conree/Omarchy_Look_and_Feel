@@ -1,0 +1,133 @@
+#!/bin/bash
+# Look & Feel themed screensaver launcher.
+# Adapted from Omarchy's omarchy-launch-screensaver: one fullscreen terminal per
+# monitor with Omarchy's screensaver window class, so Omarchy's window rules
+# (fullscreen, special workspace, slide animation) still apply.
+#
+# Usage: launch idle            started by the plugin's idle timer; wake locks
+#        launch preview [effect] from the panel; wake just closes
+
+mode=${1:-idle}
+effect=${2:-}
+here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+render="$here/render"
+
+case $mode in
+idle | preview) ;;
+*) echo "usage: launch idle | launch preview [effect]" >&2; exit 2 ;;
+esac
+
+# One launch at a time: the bar widget (and its idle timer) can exist once per
+# monitor. The lock stays held by the focus-restore helper until all close.
+exec {launch_lock}>"${XDG_RUNTIME_DIR:-/tmp}/omarchy-look-and-feel-screensaver.lock"
+if [[ $mode == preview ]]; then
+  # A preview just closed may still be releasing the lock; wait for it.
+  flock -w 3 "$launch_lock" || exit 0
+else
+  flock -n "$launch_lock" || exit 0
+fi
+
+# Exit early if a screensaver (ours or Omarchy's) is already running
+pgrep -f '[o]rg.omarchy.screensaver' >/dev/null && exit 0
+
+if [[ $mode == idle ]]; then
+  # Omarchy's Stay Awake indicator overrides idle screensavers and locks.
+  [[ -f $HOME/.local/state/omarchy/indicators/stay-awake ]] && exit 0
+  [[ $(omarchy-shell lock isLocked 2>/dev/null) == "true" ]] && exit 0
+fi
+
+focused=$(omarchy-hyprland-monitor-focused)
+terminal=$(xdg-terminal-exec --print-id)
+
+case $terminal in
+*Alacritty* | *ghostty* | *foot* | *kitty*) ;;
+*)
+  omarchy-notification-send -g ✋ "$(omarchy-i18n screensaver.terminalOnly)"
+  exit 1
+  ;;
+esac
+
+# The screensaver must be opaque even when the user's terminals are translucent.
+# Ghostty reads the user's config and its includes after command-line flags, so
+# start it from Omarchy's screensaver file alone and pass the font explicitly.
+ghostty_setting() {
+  local file
+  for file in "${XDG_CONFIG_HOME:-$HOME/.config}"/ghostty/look-and-feel-font.conf "${XDG_CONFIG_HOME:-$HOME/.config}"/ghostty/config; do
+    [[ -f $file ]] || continue
+    sed -n "s/^[[:space:]]*$1[[:space:]]*=[[:space:]]*\"\{0,1\}\([^\"]*\)\"\{0,1\}[[:space:]]*\$/\1/p" "$file" | tail -n1 | grep . && return
+  done
+}
+
+hypr_focus_monitor() {
+  hyprctl dispatch "hl.dsp.focus({ monitor = \"$1\" })" >/dev/null 2>&1 || hyprctl dispatch focusmonitor "$1" >/dev/null
+}
+
+hypr_exec() {
+  local command
+  printf -v command '%q ' "$@"
+
+  hyprctl dispatch "hl.dsp.exec_cmd([[[workspace $workspace] $command]])" >/dev/null 2>&1 ||
+    hyprctl dispatch exec -- "[workspace $workspace]" bash -lc "$command" >/dev/null
+}
+
+SOCKET="$XDG_RUNTIME_DIR/hypr/$HYPRLAND_INSTANCE_SIGNATURE/.socket2.sock"
+
+# Open Hyprland's event stream before spawning anything, so a terminal that maps
+# quickly can't emit its openwindow event before we are listening for it.
+# The reader must not inherit the launch lock: it lives until its next write
+# after the screensavers close and would block the next launch meanwhile.
+exec {events}< <(exec {launch_lock}>&- socat -U - "UNIX-CONNECT:$SOCKET")
+
+wait_for_screensaver_window() {
+  local line deadline=$((SECONDS + 5))
+  while ((SECONDS < deadline)) && IFS= read -r -t $((deadline - SECONDS)) -u "$events" line; do
+    [[ $line == openwindow\>\>*,org.omarchy.screensaver,* ]] && return 0
+  done
+}
+
+font=$(ghostty_setting font-family)
+# Use the terminal size chosen in Look & Feel, not Omarchy's fixed 18.
+font_size=$(ghostty_setting font-size | grep -E '^[0-9]+(\.[0-9]+)?$')
+
+# Focus moves between monitors while terminals are placed. Renderers treat focus
+# and cursor changes as a wake only after this marker is gone.
+placing="${XDG_RUNTIME_DIR:-/tmp}/omarchy-look-and-feel-screensaver.placing"
+: >"$placing"
+trap 'rm -f "$placing"' EXIT
+
+while read -r m special; do
+  hypr_focus_monitor "$m"
+  # Share a special workspace that is already showing, like the scratchpad, so it is still open afterwards.
+  workspace=${special:-special:screensaver-$m}
+
+  case $terminal in
+  *Alacritty*)
+    hypr_exec alacritty --class=org.omarchy.screensaver --config-file "$OMARCHY_PATH/default/alacritty/screensaver.toml" -e "$render" "$mode" "$effect"
+    ;;
+  *ghostty*)
+    hypr_exec ghostty --config-default-files=false --class=org.omarchy.screensaver --config-file="$OMARCHY_PATH/default/ghostty/screensaver" \
+      ${font:+"--font-family=$font"} --font-size="${font_size:-18}" --background-opacity=1 -e "$render" "$mode" "$effect"
+    ;;
+  *foot*)
+    hypr_exec foot --app-id=org.omarchy.screensaver --config="$OMARCHY_PATH/default/foot/screensaver.ini" -e "$render" "$mode" "$effect"
+    ;;
+  *kitty*)
+    hypr_exec kitty --class=org.omarchy.screensaver --override font_size=18 --override window_padding_width=0 --override background_opacity=1 -e "$render" "$mode" "$effect"
+    ;;
+  esac
+
+  wait_for_screensaver_window
+done < <(hyprctl monitors -j | jq -r '.[] | "\(.name) \(.specialWorkspace.name)"')
+
+hypr_focus_monitor "$focused"
+rm -f "$placing"
+
+# Emptying a special workspace focuses its monitor, so the last screensaver to close would take focus
+# with it. Hand focus back to the monitor that had it once they are all gone.
+# The class goes through the environment, since in argv the screensaver's pgrep and pkill would match it.
+(
+  while hyprctl clients -j | SCREENSAVER=org.omarchy.screensaver jq -e 'any(.[]; .mapped and .class == env.SCREENSAVER)' >/dev/null; do
+    IFS= read -r -u "$events" line || exit
+  done
+  hypr_focus_monitor "$focused"
+) >/dev/null 2>&1 &
